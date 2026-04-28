@@ -296,6 +296,7 @@ const GAS_URL = 'https://script.google.com/macros/s/AKfycby7udVu2rlhQYo1IwBKym8H
 
 // ── 系統狀態 ──
 let allQuestionsData   = [];
+let studentHashes      = [];   // ★ 從 GAS 載入的雜湊名單，本地比對用（不含原始學號姓名）
 let studentName        = "";
 let studentId          = "";
 let currentSelectedTopic = "";
@@ -327,6 +328,25 @@ async function fetchQuestionBank() {
         document.getElementById("main-title").textContent = result.title || "動態題庫測驗";
         document.title = result.title || "動態題庫測驗";
 
+        // ★ 套用標題顏色（從 J1 讀取）
+        const getTitleColorClass = (c) => {
+            const s = String(c || "").toLowerCase();
+            if (s.includes("粉")||s.includes("pink"))   return "text-pink-600";
+            if (s.includes("藍")||s.includes("blue")||s.includes("sky")) return "text-sky-600";
+            if (s.includes("綠")||s.includes("green"))  return "text-green-600";
+            if (s.includes("橘")||s.includes("orange")) return "text-orange-600";
+            if (s.includes("紫")||s.includes("purple")) return "text-purple-600";
+            if (s.includes("黃")||s.includes("yellow")) return "text-yellow-600";
+            if (s.includes("紅")||s.includes("red"))    return "text-red-600";
+            if (s.includes("黑")||s.includes("black"))  return "text-gray-800";
+            return "text-pink-600";
+        };
+        document.getElementById("main-title").className =
+            `text-3xl md:text-4xl font-bold mb-2 ${getTitleColorClass(result.titleColor)}`;
+
+        // ★ 儲存雜湊名單供登入時本地比對（原始學號姓名不在前端）
+        studentHashes = result.studentHashes || [];
+
         // ★ 只儲存題目與選項，不含答案
         allQuestionsData = result.data
             .filter(item => item.q && item.options?.length)
@@ -348,41 +368,35 @@ async function fetchQuestionBank() {
 }
 
 // ══════════════════════════════════════════════
-//  2. 學生登入（後端驗證學號＋姓名）
+//  2. 學生登入（★ 本地比對，無網路請求，即時回應）
 // ══════════════════════════════════════════════
-async function handleLogin() {
+function handleLogin() {
     const idVal   = document.getElementById("input-id").value.trim();
     const nameVal = document.getElementById("input-name").value.trim();
     const errEl   = document.getElementById("login-error");
-    const btn     = document.getElementById("login-btn");
 
     if (!idVal || !nameVal) {
         showErr(errEl, "請完整填寫學號與姓名！"); return;
     }
-    // 顯示載入中
-    btn.disabled = true;
-    btn.innerHTML = `<div class="loader" style="width:20px;height:20px;border-width:3px;border-top-color:white;margin:0;"></div> 驗證中...`;
 
-    try {
-        const res    = await postGAS({ action: "verifyStudent", studentId: idVal, name: nameVal });
-        if (!res.verified) {
-            showErr(errEl, res.message || "學號或姓名不符，請確認後再試");
+    // ★ 用雜湊比對（前端看不到原始學號姓名，安全且即時）
+    //   若名單為空（尚未在 Sheet 設定），允許任何人登入
+    if (studentHashes.length > 0) {
+        const inputHash = hashString(idVal + "|" + nameVal);
+        if (!studentHashes.includes(inputHash)) {
+            showErr(errEl, "學號或姓名不符，請確認後再試");
             return;
         }
-        // 驗證通過
-        errEl.classList.add("hidden");
-        studentId   = idVal;
-        studentName = nameVal;
-        document.getElementById("display-user-name").textContent = studentName;
-        hide("login-section");
-        renderTopics();
-        show("topic-section");
-    } catch (err) {
-        showErr(errEl, "驗證失敗，請檢查網路連線後再試");
-    } finally {
-        btn.disabled = false;
-        btn.innerHTML = "進入系統";
     }
+
+    // 驗證通過，直接進入
+    errEl.classList.add("hidden");
+    studentId   = idVal;
+    studentName = nameVal;
+    document.getElementById("display-user-name").textContent = studentName;
+    hide("login-section");
+    renderTopics();
+    show("topic-section");
 }
 
 // ══════════════════════════════════════════════
@@ -924,6 +938,17 @@ function showResultMessage(s) {
 // ══════════════════════════════════════════════
 //  工具函式
 // ══════════════════════════════════════════════
+
+// ★ FNV-1a 32-bit 雜湊（與 GAS 端完全相同）
+function hashString(str) {
+    let hash = 2166136261;
+    for (let i = 0; i < str.length; i++) {
+        hash ^= str.charCodeAt(i);
+        hash = Math.imul(hash, 16777619) >>> 0;
+    }
+    return hash.toString(16).padStart(8, '0');
+}
+
 function show(id) { document.getElementById(id)?.classList.remove("hidden"); }
 function hide(id) { document.getElementById(id)?.classList.add("hidden"); }
 function showErr(el, msg) { el.textContent = msg; el.classList.remove("hidden"); }
