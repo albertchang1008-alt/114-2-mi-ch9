@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="zh-Hant">
 <head>
@@ -24,6 +25,18 @@
         .difficulty-dot{width:10px;height:10px;border-radius:50%;display:inline-block;}
         .student-row{cursor:pointer;transition:background 0.15s;}
         .student-row:hover{background:#f0f9ff;}
+
+        /* 閃卡樣式 */
+        .flashcard-scene{perspective:1000px;width:100%;min-height:280px;cursor:pointer;}
+        .flashcard-inner{position:relative;width:100%;min-height:280px;
+            transition:transform 0.55s cubic-bezier(.4,0,.2,1);transform-style:preserve-3d;}
+        .flashcard-scene.flipped .flashcard-inner{transform:rotateY(180deg);}
+        .flashcard-face{position:absolute;width:100%;min-height:280px;
+            backface-visibility:hidden;-webkit-backface-visibility:hidden;
+            border-radius:1.25rem;padding:2rem;display:flex;flex-direction:column;
+            align-items:center;justify-content:center;}
+        .flashcard-front{background:white;border:2px solid #e0f2fe;}
+        .flashcard-back{background:#f0f9ff;border:2px solid #0ea5e9;transform:rotateY(180deg);}
 
         /* 管理人登入 modal */
         #admin-modal{display:none;}
@@ -57,6 +70,23 @@
     </section>
 
     <!-- 學生登入 -->
+    <!-- 班級完成度排行（登入框上方，無需登入即可看到） -->
+    <section id="ranking-section" class="hidden bg-white rounded-2xl shadow-sm border border-pink-100 p-6 md:p-8 mb-4">
+        <div class="flex items-center justify-between mb-4">
+            <h2 class="text-lg font-bold text-gray-800">🏅 班級完成度排行</h2>
+            <span id="ranking-pass-badge" class="text-xs bg-sky-100 text-sky-700 px-3 py-1 rounded-full font-semibold border border-sky-200"></span>
+        </div>
+        <div id="ranking-list" class="space-y-3"></div>
+        <!-- 個人完成度（點班級後展開） -->
+        <div id="ranking-student-view" class="hidden mt-4 border-t pt-4">
+            <div class="flex items-center gap-2 mb-3">
+                <button onclick="closeRankingStudentView()" class="text-gray-400 hover:text-gray-600 text-sm">← 返回</button>
+                <h3 id="ranking-class-title" class="font-bold text-gray-800"></h3>
+            </div>
+            <div id="ranking-student-list" class="space-y-2"></div>
+        </div>
+    </section>
+
     <section id="login-section" class="hidden bg-white rounded-2xl shadow-sm border border-pink-100 p-6 md:p-10 mx-auto max-w-md">
         <h2 class="text-xl font-semibold mb-6 text-center text-gray-700">學生登入</h2>
         <div class="space-y-4">
@@ -80,6 +110,23 @@
             </button>
         </div>
         <p id="login-error" class="text-red-500 text-sm mt-3 text-center hidden"></p>
+    </section>
+
+    <!-- ★ 我的完成度（登入後顯示） -->
+    <section id="my-completion-section" class="hidden bg-white rounded-2xl shadow-sm border border-pink-100 p-6 md:p-8 mb-4">
+        <div class="flex items-center justify-between mb-4">
+            <h2 class="text-lg font-bold text-gray-800">📊 我的完成度</h2>
+            <span id="my-completion-badge" class="text-xs bg-pink-100 text-pink-700 px-3 py-1 rounded-full font-semibold border border-pink-200"></span>
+        </div>
+        <!-- 整體進度條 -->
+        <div class="flex items-center gap-3 mb-5">
+            <div class="flex-1 bg-gray-100 rounded-full h-3 overflow-hidden">
+                <div id="my-completion-bar" class="h-3 rounded-full transition-all duration-700 bg-sky-400" style="width:0%"></div>
+            </div>
+            <span id="my-completion-pct" class="text-sky-600 font-bold text-lg w-14 text-right">0%</span>
+        </div>
+        <!-- 各分類狀態 -->
+        <div id="my-completion-list" class="grid grid-cols-1 sm:grid-cols-2 gap-3"></div>
     </section>
 
     <!-- 單元選擇 -->
@@ -108,6 +155,87 @@
                 📤 送出答案
             </button>
             <p class="text-sm text-gray-400 mt-3">送出後將由雲端統一判題</p>
+        </div>
+    </section>
+
+    <!-- 閃卡載入中 -->
+    <section id="flashcard-loading-section" class="hidden bg-white rounded-2xl shadow-sm border border-pink-100 p-10 mx-auto max-w-md text-center">
+        <div class="flex justify-center mb-4"><div class="loader" style="border-top-color:#0ea5e9;"></div></div>
+        <h2 class="text-lg font-semibold text-gray-700">正在載入閃卡...</h2>
+    </section>
+
+    <!-- 閃卡模式 -->
+    <section id="flashcard-section" class="hidden bg-white rounded-2xl shadow-sm border border-pink-100 p-6 md:p-8">
+        <div class="flex justify-between items-center mb-5 border-b pb-4">
+            <div>
+                <h3 id="fc-topic-title" class="text-lg font-semibold text-pink-600">閃卡複習</h3>
+                <p class="text-xs text-gray-400 mt-0.5">選擇答案後翻牌查看解析</p>
+            </div>
+            <span id="fc-progress" class="bg-pink-100 text-pink-800 text-sm font-medium px-3 py-1 rounded-full">1 / X</span>
+        </div>
+
+        <!-- 進度條 -->
+        <div class="flex items-center gap-3 mb-5">
+            <span class="text-xs text-green-600 font-medium w-14 text-right" id="fc-known-count">✅ 0</span>
+            <div class="flex-1 bg-gray-100 rounded-full h-2.5 overflow-hidden">
+                <div id="fc-progress-bar" class="bg-green-400 h-2.5 rounded-full transition-all duration-500" style="width:0%"></div>
+            </div>
+            <span class="text-xs text-red-400 font-medium w-14" id="fc-unknown-count">❌ 0 待學</span>
+        </div>
+
+        <!-- ★ 正面：題目 + 選項（不用翻轉卡片，直接呈現） -->
+        <div id="fc-front" class="mb-5">
+            <!-- 圖片 -->
+            <div id="fc-img-area" class="hidden mb-4">
+                <img id="fc-img" src="" alt="題目圖片"
+                    class="max-w-full max-h-64 mx-auto rounded-xl border border-gray-200 object-contain shadow-sm">
+            </div>
+            <!-- 題目 -->
+            <p id="fc-question" class="text-lg md:text-xl font-semibold text-gray-800 leading-relaxed mb-5"></p>
+            <!-- 選項 -->
+            <div id="fc-options" class="space-y-3"></div>
+        </div>
+
+        <!-- ★ 背面：對錯結果 + 答案 + 解析（選完後顯示） -->
+        <div id="fc-back" class="hidden">
+            <!-- 對錯橫幅 -->
+            <div id="fc-result-banner" class="rounded-xl p-4 mb-4 text-center font-bold text-lg"></div>
+            <!-- 正確答案 -->
+            <div class="bg-sky-50 border border-sky-200 rounded-xl p-4 mb-3">
+                <p class="text-xs text-sky-500 font-semibold mb-1 uppercase tracking-wider">正確答案</p>
+                <p id="fc-answer" class="text-sky-700 font-bold text-lg leading-snug"></p>
+            </div>
+            <!-- 解析 -->
+            <div id="fc-exp-wrap" class="bg-gray-50 border border-gray-200 rounded-xl p-4 mb-5 hidden">
+                <p class="text-xs text-gray-400 font-semibold mb-1 uppercase tracking-wider">💡 解析</p>
+                <p id="fc-exp" class="text-gray-700 text-sm leading-relaxed"></p>
+            </div>
+            <!-- 下一張按鈕 -->
+            <div class="flex gap-3 justify-center">
+                <button onclick="fcNext(false)"
+                    class="flex-1 max-w-xs bg-red-50 hover:bg-red-100 border-2 border-red-200 text-red-600 font-bold py-4 rounded-2xl transition text-base">
+                    ❌ 再複習一次
+                </button>
+                <button onclick="fcNext(true)"
+                    class="flex-1 max-w-xs bg-green-50 hover:bg-green-100 border-2 border-green-200 text-green-600 font-bold py-4 rounded-2xl transition text-base">
+                    ✅ 已掌握
+                </button>
+            </div>
+        </div>
+
+        <div class="mt-6 text-center">
+            <button onclick="backToTopics()" class="text-xs text-gray-300 hover:text-gray-400 transition">離開閃卡</button>
+        </div>
+    </section>
+
+    <!-- 閃卡完成 -->
+    <section id="flashcard-done-section" class="hidden bg-white rounded-2xl shadow-sm border border-pink-100 p-10 text-center">
+        <div class="text-6xl mb-4">🎉</div>
+        <h2 class="text-2xl font-bold text-gray-800 mb-2">複習完成！</h2>
+        <p id="fc-done-msg" class="text-gray-500 mb-8"></p>
+        <div class="flex flex-col gap-3 max-w-xs mx-auto">
+            <button onclick="restartFlashcard()" class="bg-sky-500 hover:bg-sky-600 text-white font-bold py-3.5 rounded-xl transition">🔄 重新複習全部</button>
+            <button onclick="backToTopics()"     class="bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold py-3.5 rounded-xl transition">回單元列表</button>
         </div>
     </section>
 
@@ -162,10 +290,49 @@
 <!-- ★ 教師後台入口：藏在頁面底部，兩個「©」中間那個才是觸發點 -->
 <footer class="text-center py-4 mt-auto select-none">
     <span class="text-gray-200 text-xs">© 題庫系統</span>
-    <button onclick="openAdminModal()"
+    <button onclick="tryOpenAdminModal()"
             class="text-gray-200 text-xs ml-px hover:text-gray-300 focus:outline-none cursor-default"
             tabindex="-1" aria-hidden="true">©</button>
 </footer>
+
+<!-- ══════════════════════════════════════════ -->
+<!--       綜合練習 — 選擇分類 Modal            -->
+<!-- ══════════════════════════════════════════ -->
+<div id="combo-modal" class="fixed inset-0 bg-black/40 z-50 items-center justify-center p-4" style="display:none;">
+    <div class="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6 max-h-[90vh] flex flex-col">
+        <div class="flex items-center justify-between mb-4 shrink-0">
+            <h2 class="text-lg font-bold text-gray-800">🏆 綜合練習 — 選擇分類</h2>
+            <button onclick="closeComboModal()" class="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
+        </div>
+
+        <!-- 全選 / 全不選 -->
+        <div class="flex items-center gap-3 mb-3 shrink-0">
+            <button onclick="comboSelectAll(true)"  class="text-xs text-sky-600 hover:text-sky-800 border border-sky-200 bg-sky-50 hover:bg-sky-100 px-3 py-1 rounded-full transition">全選</button>
+            <button onclick="comboSelectAll(false)" class="text-xs text-gray-500 hover:text-gray-700 border border-gray-200 bg-gray-50 hover:bg-gray-100 px-3 py-1 rounded-full transition">全不選</button>
+            <span class="text-xs text-gray-400 ml-auto" id="combo-selected-count"></span>
+        </div>
+
+        <!-- 認知類型快速篩選 -->
+        <div id="combo-cog-filter" class="flex gap-2 flex-wrap mb-3 shrink-0"></div>
+
+        <!-- 分類勾選列表 -->
+        <div id="combo-topic-list" class="grid grid-cols-1 sm:grid-cols-2 gap-2 overflow-y-auto flex-1 pr-1 mb-4"></div>
+
+        <!-- 題數設定 + 開始按鈕 -->
+        <div class="shrink-0 border-t pt-4">
+            <div class="flex items-center gap-3 mb-4">
+                <label class="text-sm font-medium text-gray-600 shrink-0">抽題數量</label>
+                <input type="number" id="combo-count" value="30" min="1" max="200"
+                    class="w-24 border border-gray-300 rounded-lg px-3 py-2 text-center font-bold text-gray-800 focus:outline-none focus:ring-2 focus:ring-sky-300">
+                <span class="text-sm text-gray-400">題（從勾選分類中隨機抽取）</span>
+            </div>
+            <button onclick="startComboQuiz()"
+                class="w-full bg-sky-500 hover:bg-sky-600 text-white font-bold py-3.5 rounded-xl transition text-base">
+                🚀 開始練習
+            </button>
+        </div>
+    </div>
+</div>
 
 <!-- ══════════════════════════════════════════ -->
 <!--       管理人登入 Modal                     -->
@@ -242,6 +409,7 @@
                 <button class="tab-btn active px-5 py-2 rounded-full text-sm font-semibold border border-gray-200 bg-white" onclick="switchTab('class',event)">🏫 班級總覽</button>
                 <button class="tab-btn px-5 py-2 rounded-full text-sm font-semibold border border-gray-200 bg-white" onclick="switchTab('question',event)">📋 題目難度分析</button>
                 <button class="tab-btn px-5 py-2 rounded-full text-sm font-semibold border border-gray-200 bg-white" onclick="switchTab('topic',event)">📚 單元統計</button>
+                <button class="tab-btn px-5 py-2 rounded-full text-sm font-semibold border border-gray-200 bg-white" onclick="switchTab('settings',event)">⚙️ 完成度設定</button>
             </div>
 
             <!-- Tab 1：班級總覽 -->
@@ -287,6 +455,8 @@
                 </div>
                 <!-- 分類篩選 -->
                 <div id="topic-filter-btns" class="flex gap-2 flex-wrap mb-4"></div>
+                <!-- 認知類型篩選 -->
+                <div id="cog-filter-btns" class="flex gap-2 flex-wrap mb-3"></div>
                 <input id="q-search" type="text" placeholder="搜尋題目關鍵字..."
                     class="w-full border border-gray-200 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-300 mb-4"
                     oninput="filterQuestions()">
@@ -298,6 +468,54 @@
                 <h2 class="text-lg font-bold text-gray-800 mb-5">各單元答對率</h2>
                 <div class="mb-6" style="max-height:320px;"><canvas id="topic-chart"></canvas></div>
                 <div id="topic-stats-list" class="space-y-3"></div>
+            </div>
+
+            <!-- Tab 設定：完成度設定 -->
+            <div id="tab-settings" class="tab-content bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
+                <h2 class="text-lg font-bold text-gray-800 mb-2">⚙️ 班級完成度排行設定</h2>
+                <p class="text-sm text-gray-400 mb-6">設定後儲存，學生登入頁面的排行榜會即時更新。</p>
+
+                <!-- 達標分數 -->
+                <div class="mb-6">
+                    <label class="block text-sm font-semibold text-gray-700 mb-2">達標分數（完整測驗最高分 ≥ 此分數視為完成）</label>
+                    <div class="flex items-center gap-3">
+                        <input type="number" id="settings-pass-score" min="1" max="100" value="80"
+                            class="w-28 border border-gray-300 rounded-lg px-4 py-2 text-center text-lg font-bold focus:outline-none focus:ring-2 focus:ring-sky-300">
+                        <span class="text-gray-500 text-sm">分</span>
+                    </div>
+                </div>
+
+                <!-- 分類勾選 -->
+                <div class="mb-6">
+                    <div class="flex items-center justify-between mb-3">
+                        <label class="text-sm font-semibold text-gray-700">納入完成度計算的分類</label>
+                        <div class="flex gap-2">
+                            <button onclick="settingsSelectAll(true)"  class="text-xs text-sky-600 hover:text-sky-800 underline">全選</button>
+                            <button onclick="settingsSelectAll(false)" class="text-xs text-gray-400 hover:text-gray-600 underline">全不選</button>
+                        </div>
+                    </div>
+                    <div id="settings-topic-list" class="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-80 overflow-y-auto pr-1"></div>
+                </div>
+
+                <!-- 班級勾選 -->
+                <div class="mb-6">
+                    <div class="flex items-center justify-between mb-3">
+                        <label class="text-sm font-semibold text-gray-700">顯示哪些班級的排行</label>
+                        <div class="flex gap-2">
+                            <span class="text-xs text-gray-400">（全選 = 顯示所有班級）</span>
+                            <button onclick="settingsSelectAllClasses(true)"  class="text-xs text-purple-600 hover:text-purple-800 underline">全選</button>
+                            <button onclick="settingsSelectAllClasses(false)" class="text-xs text-gray-400 hover:text-gray-600 underline">全不選</button>
+                        </div>
+                    </div>
+                    <div id="settings-class-list" class="grid grid-cols-2 md:grid-cols-3 gap-2 max-h-48 overflow-y-auto pr-1"></div>
+                </div>
+
+                <!-- 儲存按鈕 -->
+                <button id="settings-save-btn" onclick="saveCompletionSettings()"
+                    class="bg-sky-500 hover:bg-sky-600 text-white font-bold px-8 py-3 rounded-xl transition">
+                    💾 儲存設定
+                </button>
+                <p id="settings-save-status" class="text-sm mt-3 font-medium hidden"></p>
             </div>
         </div>
     </div>
@@ -312,7 +530,10 @@ const GAS_URL = 'https://script.google.com/macros/s/AKfycby7udVu2rlhQYo1IwBKym8H
 
 // ── 系統狀態 ──
 let allQuestionsData   = [];
+let topicsData         = [];   // ★ 分類清單（doGet 回傳）
 let studentHashes      = [];   // ★ 從 GAS 載入的雜湊名單，本地比對用（不含原始學號姓名）
+let completionSettings = { passScore: 80, completionTopics: [], completionClasses: [] }; // ★ 完成度設定
+let allClassList       = [];   // ★ 所有班級清單（後台設定用）
 let studentName        = "";
 let studentId          = "";
 let currentSelectedTopic = "";
@@ -338,47 +559,54 @@ async function fetchQuestionBank() {
         const res    = await fetch(GAS_URL);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const result = await res.json();
-        if (result.status !== "success" || !result.data?.length)
+        if (result.status !== "success" || !result.topics?.length)
             throw new Error("題庫回傳格式不正確，或題庫為空");
 
         document.getElementById("main-title").textContent = result.title || "動態題庫測驗";
         document.title = result.title || "動態題庫測驗";
 
-        // ★ 套用標題顏色（從 J1 讀取）
-        const getTitleColorClass = (c) => {
-            const s = String(c || "").toLowerCase();
-            if (s.includes("粉")||s.includes("pink"))   return "text-pink-600";
-            if (s.includes("藍")||s.includes("blue")||s.includes("sky")) return "text-sky-600";
-            if (s.includes("綠")||s.includes("green"))  return "text-green-600";
-            if (s.includes("橘")||s.includes("orange")) return "text-orange-600";
-            if (s.includes("紫")||s.includes("purple")) return "text-purple-600";
-            if (s.includes("黃")||s.includes("yellow")) return "text-yellow-600";
-            if (s.includes("紅")||s.includes("red"))    return "text-red-600";
-            if (s.includes("黑")||s.includes("black"))  return "text-gray-800";
-            return "text-pink-600";
-        };
-        document.getElementById("main-title").className =
-            `text-3xl md:text-4xl font-bold mb-2 ${getTitleColorClass(result.titleColor)}`;
+        // ★ 套用標題顏色（支援 hex 色碼如 #f000a8，或中文/英文關鍵字）
+        const titleEl = document.getElementById("main-title");
+        const tc = result.titleColor || "";
+        if (tc.startsWith("#") || tc.startsWith("rgb")) {
+            // hex 或 rgb → inline style
+            titleEl.className   = "text-3xl md:text-4xl font-bold mb-2";
+            titleEl.style.color = tc;
+        } else {
+            const getTitleColorClass = (c) => {
+                const s = String(c || "").toLowerCase();
+                if (s.includes("粉")||s.includes("pink"))   return "text-pink-600";
+                if (s.includes("藍")||s.includes("blue")||s.includes("sky")) return "text-sky-600";
+                if (s.includes("綠")||s.includes("green"))  return "text-green-600";
+                if (s.includes("橘")||s.includes("orange")) return "text-orange-600";
+                if (s.includes("紫")||s.includes("purple")) return "text-purple-600";
+                if (s.includes("黃")||s.includes("yellow")) return "text-yellow-600";
+                if (s.includes("紅")||s.includes("red"))    return "text-red-600";
+                if (s.includes("黑")||s.includes("black"))  return "text-gray-800";
+                return "text-pink-600";
+            };
+            titleEl.className   = `text-3xl md:text-4xl font-bold mb-2 ${getTitleColorClass(tc)}`;
+            titleEl.style.color = "";
+        }
 
         // ★ 儲存雜湊名單供登入時本地比對（原始學號姓名不在前端）
         studentHashes = result.studentHashes || [];
 
-        // ★ 只儲存題目與選項，不含答案
-        allQuestionsData = result.data
-            .filter(item => item.q && item.options?.length)
-            .map((item, idx) => ({
-                id:      item.id || `Q_${idx}`,
-                top:     item.top || "未分類",
-                q:       item.q,
-                options: item.options,
-                color:   item.color || "red",
-                isImage: item.isImage || false,  // ★
-                imgUrl:  item.imgUrl  || "",       // ★
-            }));
+        // ★ 只儲存分類清單，題目內容待進入分類後再載入
+        topicsData = result.topics || [];
+
+        // ★ 儲存完成度設定供入口頁排行使用
+        completionSettings = result.completionSettings || { passScore: 80, completionTopics: [], completionClasses: [] };
+        allClassList       = result.allClassList || [];
 
         hide("loading-section");
         show("login-section");
         document.getElementById("input-id").focus();
+
+        // ★ 排行不需登入，載入題庫後立即顯示
+        if (completionSettings.completionTopics?.length > 0) {
+            loadCompletionRanking();
+        }
     } catch (err) {
         document.getElementById("error-message").textContent = "連線失敗：" + err.message;
         hide("loading-section"); show("error-section");
@@ -415,6 +643,11 @@ function handleLogin() {
     hide("login-section");
     renderTopics();
     show("topic-section");
+    // ★ 登入後隱藏班級排行，只顯示個人完成度
+    hide("ranking-section");
+    if (completionSettings.completionTopics?.length > 0) {
+        loadMyCompletion();
+    }
 }
 
 // ══════════════════════════════════════════════
@@ -423,47 +656,163 @@ function handleLogin() {
 function renderTopics() {
     const div = document.getElementById("topic-list");
     div.innerHTML = "";
-    const topicMap = new Map();
-    allQuestionsData.forEach(q => { if (!topicMap.has(q.top)) topicMap.set(q.top, q.color || "red"); });
 
-    const cls = (c) => {
-        const s = String(c||"").toLowerCase();
-        if (s.includes("粉")||s.includes("pink"))   return "border-pink-100 hover:border-pink-300 hover:bg-pink-50 text-pink-700";
-        if (s.includes("藍")||s.includes("blue")||s.includes("sky")) return "border-blue-100 hover:border-blue-300 hover:bg-blue-50 text-blue-700";
-        if (s.includes("綠")||s.includes("green"))  return "border-green-100 hover:border-green-300 hover:bg-green-50 text-green-700";
-        if (s.includes("橘")||s.includes("orange")) return "border-orange-100 hover:border-orange-300 hover:bg-orange-50 text-orange-700";
-        if (s.includes("紫")||s.includes("purple")) return "border-purple-100 hover:border-purple-300 hover:bg-purple-50 text-purple-700";
-        if (s.includes("黃")||s.includes("yellow")) return "border-yellow-100 hover:border-yellow-300 hover:bg-yellow-50 text-yellow-700";
-        return "border-red-100 hover:border-red-300 hover:bg-red-50 text-red-700";
+    // ★ 工具：hex 色碼轉淡色背景（加透明度）
+    const hexToRgba = (hex, alpha) => {
+        const h = hex.replace("#","");
+        const r = parseInt(h.slice(0,2),16);
+        const g = parseInt(h.slice(2,4),16);
+        const b = parseInt(h.slice(4,6),16);
+        return `rgba(${r},${g},${b},${alpha})`;
     };
-    topicMap.forEach((color, topic) => {
-        const btn = document.createElement("button");
-        btn.className = `text-left bg-white border-2 p-4 rounded-xl shadow-sm transition font-medium ${cls(color)}`;
-        btn.textContent = topic;
-        btn.onclick = () => startFullQuiz(topic);
-        div.appendChild(btn);
+
+    // ★ 根據顏色值回傳樣式物件
+    //   若為 hex 色碼 → 回傳 { isHex:true, hex } 讓後面用 inline style
+    //   若為文字關鍵字 → 回傳 Tailwind class 物件
+    const cls = (c) => {
+        const raw = String(c || "").trim();
+        // hex 色碼判斷
+        if (/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(raw)) {
+            return { isHex: true, hex: raw };
+        }
+        const s = raw.toLowerCase();
+        if (s.includes("粉")||s.includes("pink"))   return { border:"border-pink-200",   hover:"hover:bg-pink-50",   text:"text-pink-700",   fc:"text-pink-400",   fcBorder:"border-t-pink-100" };
+        if (s.includes("藍")||s.includes("blue")||s.includes("sky")) return { border:"border-blue-200",  hover:"hover:bg-blue-50",   text:"text-blue-700",   fc:"text-blue-400",   fcBorder:"border-t-blue-100" };
+        if (s.includes("綠")||s.includes("green"))  return { border:"border-green-200",  hover:"hover:bg-green-50",  text:"text-green-700",  fc:"text-green-400",  fcBorder:"border-t-green-100" };
+        if (s.includes("橘")||s.includes("orange")) return { border:"border-orange-200", hover:"hover:bg-orange-50", text:"text-orange-700", fc:"text-orange-400", fcBorder:"border-t-orange-100" };
+        if (s.includes("紫")||s.includes("purple")) return { border:"border-purple-200", hover:"hover:bg-purple-50", text:"text-purple-700", fc:"text-purple-400", fcBorder:"border-t-purple-100" };
+        if (s.includes("黃")||s.includes("yellow")) return { border:"border-yellow-200", hover:"hover:bg-yellow-50", text:"text-yellow-700", fc:"text-yellow-400", fcBorder:"border-t-yellow-100" };
+        return { border:"border-red-200", hover:"hover:bg-red-50", text:"text-red-700", fc:"text-red-400", fcBorder:"border-t-red-100" };
+    };
+
+    // ★ 從 topicsData 渲染（doGet 只回傳分類清單）
+    topicsData.forEach(({ name: topic, color }) => {
+        const c = cls(color);
+        const wrapper = document.createElement("div");
+
+        if (c.isHex) {
+            // hex 色碼 → inline style
+            wrapper.className = "bg-white border-2 rounded-xl shadow-sm overflow-hidden";
+            wrapper.style.borderColor = hexToRgba(c.hex, 0.5);
+
+            const quizBtn = document.createElement("button");
+            quizBtn.className   = "w-full text-left px-4 py-3.5 font-medium transition";
+            quizBtn.style.color = c.hex;
+            quizBtn.textContent = topic;
+            quizBtn.onmouseover = () => { quizBtn.style.background = hexToRgba(c.hex, 0.06); };
+            quizBtn.onmouseout  = () => { quizBtn.style.background = ""; };
+            quizBtn.onclick     = () => loadAndStartQuiz(topic);
+
+            const fcBtn = document.createElement("button");
+            fcBtn.className   = "w-full flex items-center justify-center gap-1.5 px-4 py-2 text-xs font-semibold transition";
+            fcBtn.style.color       = hexToRgba(c.hex, 0.7);
+            fcBtn.style.borderTop   = `1px solid ${hexToRgba(c.hex, 0.15)}`;
+            fcBtn.onmouseover = () => { fcBtn.style.background = hexToRgba(c.hex, 0.06); };
+            fcBtn.onmouseout  = () => { fcBtn.style.background = ""; };
+            fcBtn.innerHTML = "🃏 閃卡複習";
+            fcBtn.onclick   = (e) => { e.stopPropagation(); loadAndStartFlashcard(topic); };
+
+            wrapper.appendChild(quizBtn);
+            wrapper.appendChild(fcBtn);
+        } else {
+            // 文字關鍵字 → Tailwind class（原本邏輯）
+            wrapper.className = `bg-white border-2 ${c.border} rounded-xl shadow-sm overflow-hidden`;
+
+            const quizBtn = document.createElement("button");
+            quizBtn.className   = `w-full text-left px-4 py-3.5 font-medium ${c.text} ${c.hover} transition`;
+            quizBtn.textContent = topic;
+            quizBtn.onclick     = () => loadAndStartQuiz(topic);
+
+            const fcBtn = document.createElement("button");
+            fcBtn.className = `w-full flex items-center justify-center gap-1.5 px-4 py-2 text-xs font-semibold border-t ${c.fcBorder} ${c.fc} ${c.hover} transition`;
+            fcBtn.innerHTML = "🃏 閃卡複習";
+            fcBtn.onclick   = (e) => { e.stopPropagation(); loadAndStartFlashcard(topic); };
+
+            wrapper.appendChild(quizBtn);
+            wrapper.appendChild(fcBtn);
+        }
+
+        div.appendChild(wrapper);
     });
 
-    const all = document.createElement("button");
-    all.className = "md:col-span-2 text-center bg-blue-50 border-2 border-blue-200 hover:border-blue-400 hover:bg-blue-100 p-4 rounded-xl shadow-sm transition text-blue-700 font-bold text-lg mt-2";
-    all.innerHTML = "🏆 綜合練習 <span class='text-sm font-normal text-blue-600 block mt-1'>打亂所有章節，隨機抽取 30 題</span>";
-    all.onclick = () => startFullQuiz("綜合練習");
-    div.appendChild(all);
+    const allWrapper = document.createElement("div");
+    allWrapper.className = "md:col-span-2 mt-2";
+    const allBtn = document.createElement("button");
+    allBtn.className = "w-full text-center bg-blue-50 border-2 border-blue-200 hover:border-blue-400 hover:bg-blue-100 p-4 rounded-xl shadow-sm transition text-blue-700 font-bold text-lg";
+    allBtn.innerHTML = "🏆 綜合練習 <span class='text-sm font-normal text-blue-600 block mt-1'>自由選擇分類，隨機出題</span>";
+    allBtn.onclick = () => openComboModal();
+    allWrapper.appendChild(allBtn);
+    div.appendChild(allWrapper);
 }
 
 // ══════════════════════════════════════════════
-//  4. 開始測驗（純前端答題，無網路延遲）
+//  4. 開始測驗（按需載入 + 純前端答題）
 // ══════════════════════════════════════════════
-function startFullQuiz(topic) {
+
+// ★ 按需載入指定分類題目，再開始測驗
+async function loadAndStartQuiz(topic) {
     currentSelectedTopic = topic;
     isRetryMode = false;
     attemptCount++;
-    let qs = topic === "綜合練習"
-        ? shuffle([...allQuestionsData]).slice(0, 30)
-        : allQuestionsData.filter(q => q.top === topic);
-    if (!qs.length) { alert("該分類下目前沒有題目！"); return; }
-    prepareQuiz(qs);
+    hide("topic-section");
+    hide("my-completion-section"); // ★ 進入答題後隱藏完成度
+    // 顯示載入中（借用 submitting-section）
+    document.querySelector("#submitting-section h2").textContent = "正在載入題目...";
+    document.querySelector("#submitting-section p").textContent  = "請稍候";
+    show("submitting-section");
+    try {
+        await loadTopicQuestions(topic, false);
+        hide("submitting-section");
+        if (!allQuestionsData.length) { show("topic-section"); alert("該分類下目前沒有題目！"); return; }
+        prepareQuiz(allQuestionsData);
+    } catch(e) {
+        hide("submitting-section");
+        show("topic-section");
+        alert("載入失敗：" + e.message);
+    }
 }
+
+// ★ 按需載入指定分類題目，再開始閃卡
+async function loadAndStartFlashcard(topic) {
+    currentSelectedTopic = topic;
+    hide("topic-section");
+    hide("my-completion-section"); // ★ 進入閃卡後隱藏完成度
+    show("flashcard-loading-section");
+    try {
+        await loadTopicQuestions(topic, true); // flashcard=true 回傳答案
+        hide("flashcard-loading-section");
+        if (!allQuestionsData.length) { show("topic-section"); alert("該分類下目前沒有題目！"); return; }
+        startFlashcard(allQuestionsData, topic);
+    } catch(e) {
+        hide("flashcard-loading-section");
+        show("topic-section");
+        alert("載入失敗：" + e.message);
+    }
+}
+
+// ★ 向 GAS 請求指定分類題目
+async function loadTopicQuestions(topic, flashcard) {
+    const res = await postGAS({ action: "getTopicQuestions", topic, flashcard: flashcard || false });
+    if (res.status !== "ok") throw new Error(res.message || "載入失敗");
+
+    let data = res.data || [];
+    if (topic === "綜合練習") data = shuffle([...data]).slice(0, 30);
+
+    allQuestionsData = data.map((item, idx) => ({
+        id:      item.id      || `Q_${idx}`,
+        top:     item.top     || "未分類",
+        q:       item.q,
+        options: item.options || [],
+        color:   item.color   || "red",
+        isImage: item.isImage || false,
+        imgUrl:  item.imgUrl  || "",
+        ans:     item.ans     || "",
+        exp:     item.exp     || "",
+        cogType: item.cogType || "", // ★ M欄認知類型
+    }));
+}
+
+function startFullQuiz(topic) { loadAndStartQuiz(topic); } // 相容舊呼叫
 
 function startRetry() {
     isRetryMode = true;
@@ -482,8 +831,9 @@ function prepareQuiz(sources) {
         top:            src.top,
         q:              src.q,
         shuffledOpts:   shuffle([...src.options]),
-        isImage:        src.isImage || false,   // ★ 圖片題旗標
-        imgUrl:         src.imgUrl  || "",       // ★ 圖片網址
+        isImage:        src.isImage || false,
+        imgUrl:         src.imgUrl  || "",
+        cogType:        src.cogType || "",  // ★ 認知類型
         userSelectedIndex:   null,
         isCorrectlyAnswered: false,
         serverCorrectText:   "",
@@ -505,6 +855,21 @@ function renderQuestion() {
 
     const prefix = (currentSelectedTopic === "綜合練習" && q.top) ? `[${q.top.split(' ')[0]}] ` : "";
     document.getElementById("question-text").textContent = `${prefix}${currentQuestionIndex + 1}. ${q.q}`;
+
+    // ★ 認知類型標籤
+    let cogEl = document.getElementById("question-cog-badge");
+    if (!cogEl) {
+        cogEl = document.createElement("span");
+        cogEl.id = "question-cog-badge";
+        document.getElementById("question-text").before(cogEl);
+    }
+    if (q.cogType) {
+        cogEl.textContent  = q.cogType;
+        cogEl.className    = "inline-block text-xs font-semibold px-2.5 py-0.5 rounded-full mb-2 bg-violet-100 text-violet-700 border border-violet-200";
+    } else {
+        cogEl.textContent = "";
+        cogEl.className   = "";
+    }
 
     // ★ 圖片題：顯示圖片
     let imgEl = document.getElementById("question-image-area");
@@ -702,15 +1067,509 @@ function renderReviewList() {
     });
 }
 
+// ══════════════════════════════════════════════
+//  閃卡模式
+// ══════════════════════════════════════════════
+let fcDeck        = [];
+let fcKnown       = [];
+let fcCurrentCard = null;
+
+function startFlashcard(questions, topic) {
+    fcDeck  = shuffle(questions.map(q => ({ ...q })));
+    fcKnown = [];
+    hide("topic-section"); hide("result-section");
+    show("flashcard-section");
+    document.getElementById("fc-topic-title").textContent = `🃏 ${topic}`;
+    renderFlashcard();
+}
+
+function renderFlashcard() {
+    if (fcDeck.length === 0) { showFlashcardDone(); return; }
+
+    fcCurrentCard = fcDeck[0];
+    const q = fcCurrentCard;
+
+    // 重置：顯示正面，隱藏背面
+    show("fc-front"); hide("fc-back");
+
+    // 進度
+    const total = fcDeck.length + fcKnown.length;
+    const known = fcKnown.length;
+    const pct   = total > 0 ? Math.round((known / total) * 100) : 0;
+    document.getElementById("fc-progress").textContent      = `${known} / ${total}`;
+    document.getElementById("fc-known-count").textContent   = `✅ ${known}`;
+    document.getElementById("fc-unknown-count").textContent = `❌ ${fcDeck.length} 待學`;
+    document.getElementById("fc-progress-bar").style.width  = pct + "%";
+
+    // 圖片
+    const imgArea = document.getElementById("fc-img-area");
+    const imgEl   = document.getElementById("fc-img");
+    if (q.isImage && q.imgUrl) {
+        imgArea.classList.remove("hidden"); imgEl.src = q.imgUrl;
+    } else {
+        imgArea.classList.add("hidden"); imgEl.src = "";
+    }
+
+    // 題目
+    // 閃卡認知類型標籤
+    let fcCogEl = document.getElementById("fc-cog-badge");
+    if (!fcCogEl) {
+        fcCogEl = document.createElement("span");
+        fcCogEl.id = "fc-cog-badge";
+        document.getElementById("fc-question").before(fcCogEl);
+    }
+    if (q.cogType) {
+        fcCogEl.textContent = q.cogType;
+        fcCogEl.className   = "inline-block text-xs font-semibold px-2.5 py-0.5 rounded-full mb-2 bg-violet-100 text-violet-700 border border-violet-200";
+    } else {
+        fcCogEl.textContent = "";
+        fcCogEl.className   = "";
+    }
+    document.getElementById("fc-question").textContent = q.q;
+
+    // ★ 選項按鈕（洗牌後渲染）
+    const optContainer = document.getElementById("fc-options");
+    optContainer.innerHTML = "";
+    const shuffledOpts = shuffle([...q.options]);
+    shuffledOpts.forEach(opt => {
+        const btn = document.createElement("button");
+        btn.className = "fc-opt-btn w-full text-left bg-gray-50 border border-gray-200 hover:bg-sky-50 hover:border-sky-300 text-gray-700 font-medium rounded-xl px-4 py-3 transition text-sm";
+        btn.textContent = opt;
+        btn.dataset.opt = opt;
+        btn.onclick = () => fcSelectOption(btn, opt, q);
+        optContainer.appendChild(btn);
+    });
+}
+
+function fcSelectOption(clickedBtn, selectedOpt, q) {
+    // 鎖定所有選項
+    document.querySelectorAll(".fc-opt-btn").forEach(b => { b.onclick = null; });
+
+    const cleanSel  = selectedOpt.replace(/^([1-4]|[A-D])[.\-、\s]*/i,"").trim().toLowerCase();
+    const cleanCorr = (q.ans||"").replace(/^([1-4]|[A-D])[.\-、\s]*/i,"").trim().toLowerCase();
+    const isCorrect = cleanSel === cleanCorr;
+
+    // 標示選項顏色
+    document.querySelectorAll(".fc-opt-btn").forEach(b => {
+        const cleanB = b.dataset.opt.replace(/^([1-4]|[A-D])[.\-、\s]*/i,"").trim().toLowerCase();
+        if (cleanB === cleanCorr) {
+            b.className = "fc-opt-btn w-full text-left border-2 border-green-400 bg-green-50 text-green-700 font-bold rounded-xl px-4 py-3 text-sm";
+        } else if (b === clickedBtn && !isCorrect) {
+            b.className = "fc-opt-btn w-full text-left border-2 border-red-300 bg-red-50 text-red-600 font-semibold rounded-xl px-4 py-3 text-sm";
+        } else {
+            b.className = "fc-opt-btn w-full text-left border border-gray-100 bg-gray-50 text-gray-400 rounded-xl px-4 py-3 text-sm";
+        }
+    });
+
+    // 延遲 500ms 後顯示背面（對錯結果）
+    setTimeout(() => {
+        hide("fc-front"); show("fc-back");
+
+        // 對錯橫幅
+        const banner = document.getElementById("fc-result-banner");
+        if (isCorrect) {
+            banner.textContent = "✅ 答對了！";
+            banner.className = "rounded-xl p-4 mb-4 text-center font-bold text-lg bg-green-50 border-2 border-green-300 text-green-700";
+        } else {
+            banner.textContent = "❌ 答錯了";
+            banner.className = "rounded-xl p-4 mb-4 text-center font-bold text-lg bg-red-50 border-2 border-red-300 text-red-600";
+        }
+
+        // 正確答案
+        document.getElementById("fc-answer").textContent = q.ans || "（無答案資料）";
+
+        // 解析
+        const expWrap = document.getElementById("fc-exp-wrap");
+        const expEl   = document.getElementById("fc-exp");
+        if (q.exp && q.exp !== "尚無解析") {
+            expEl.textContent = q.exp;
+            expWrap.classList.remove("hidden");
+        } else {
+            expWrap.classList.add("hidden");
+        }
+
+        // 自動記錄答對/答錯供 fcNext 使用
+        fcCurrentCard._lastCorrect = isCorrect;
+    }, 500);
+}
+
+// 「已掌握」或「再複習一次」
+function fcNext(markKnown) {
+    if (!fcCurrentCard) return;
+    const card = fcDeck.shift();
+    if (markKnown) fcKnown.push(card);
+    else           fcDeck.push(card); // 放回末尾
+    fcCurrentCard = null;
+    renderFlashcard();
+}
+
+// 相容舊呼叫
+function fcAnswer(knew) { fcNext(knew); }
+function flipCard() {}   // 新版不需要，保留避免報錯
+
+function showFlashcardDone() {
+    hide("flashcard-section");
+    show("flashcard-done-section");
+    document.getElementById("fc-done-msg").textContent =
+        `共 ${fcKnown.length} 張全部複習完成！`;
+}
+
+function restartFlashcard() {
+    hide("flashcard-done-section");
+    fcDeck  = shuffle([...fcKnown]);
+    fcKnown = [];
+    show("flashcard-section");
+    renderFlashcard();
+}
+
+// ══════════════════════════════════════════════
+//  班級完成度排行
+// ══════════════════════════════════════════════
+
+// 姓名遮罩：中間字改為 O（2字→第1字遮，3字以上→中間字遮）
+function maskName(name) {
+    if (!name) return "";
+    const chars = [...name]; // 支援中文
+    if (chars.length <= 1) return name;
+    if (chars.length === 2) return chars[0] + "O";
+    // 3字以上：中間全遮
+    const mid = chars.slice(1, chars.length - 1).map(() => "O");
+    return chars[0] + mid.join("") + chars[chars.length - 1];
+}
+
+let rankingData = null; // 快取排行資料
+
+// ── 個人完成度 ────────────────────────────────
+async function loadMyCompletion() {
+    try {
+        const res = await postGAS({ action: "getMyCompletion", studentId });
+        if (res.status !== "ok") return;
+        renderMyCompletion(res);
+        show("my-completion-section");
+    } catch(e) {
+        console.warn("個人完成度載入失敗", e);
+    }
+}
+
+function renderMyCompletion(data) {
+    const { passScore, completionTopics, details } = data;
+    const passed  = details.filter(d => d.passed).length;
+    const total   = completionTopics.length;
+    const pct     = total > 0 ? Math.round((passed / total) * 100) : 0;
+    const barCls  = pct >= 80 ? "bg-green-400" : pct >= 50 ? "bg-sky-400" : "bg-rose-400";
+
+    // 標題 badge
+    document.getElementById("my-completion-badge").textContent =
+        `達標：${passScore} 分`;
+
+    // 整體進度條
+    const bar = document.getElementById("my-completion-bar");
+    bar.style.width   = pct + "%";
+    bar.className     = `h-3 rounded-full transition-all duration-700 ${barCls}`;
+    document.getElementById("my-completion-pct").textContent = `${passed}/${total}`;
+
+    // 各分類卡片
+    document.getElementById("my-completion-list").innerHTML = details.map(d => {
+        const isPassed = d.passed;
+        const best     = d.best !== null ? d.best + " 分" : "尚未作答";
+        const cardCls  = isPassed
+            ? "border-green-200 bg-green-50"
+            : d.best !== null ? "border-yellow-200 bg-yellow-50" : "border-gray-100 bg-gray-50";
+        const iconCls  = isPassed ? "text-green-500" : d.best !== null ? "text-yellow-500" : "text-gray-300";
+        const icon     = isPassed ? "✅" : d.best !== null ? "⚠️" : "⭕";
+        const textCls  = isPassed ? "text-green-700" : d.best !== null ? "text-yellow-700" : "text-gray-400";
+        const hint     = isPassed
+            ? "已完成"
+            : d.best !== null ? `還差 ${passScore - d.best} 分達標` : "點下方按鈕開始練習";
+
+        return `<div class="border ${cardCls} rounded-xl p-3 flex items-center gap-3">
+            <span class="text-2xl shrink-0">${icon}</span>
+            <div class="flex-1 min-w-0">
+                <p class="font-semibold text-gray-800 text-sm truncate" title="${d.topic}">${d.topic}</p>
+                <p class="text-xs ${textCls} mt-0.5">${hint}　<span class="text-gray-400">最高：${best}</span></p>
+            </div>
+        </div>`;
+    }).join("");
+}
+
+async function loadCompletionRanking() {
+    try {
+        const res = await postGAS({ action: "getCompletionRanking" });
+        if (res.status !== "ok") return;
+        rankingData = res;
+        renderRankingSection(res);
+        show("ranking-section");
+    } catch(e) {
+        console.warn("排行載入失敗", e);
+    }
+}
+
+function renderRankingSection(data) {
+    const { passScore, completionTopics, ranking } = data;
+    document.getElementById("ranking-pass-badge").textContent = `達標：${passScore} 分`;
+    document.getElementById("ranking-list").innerHTML = "";
+    document.getElementById("ranking-student-view").classList.add("hidden");
+
+    if (!ranking.length) {
+        document.getElementById("ranking-list").innerHTML =
+            '<p class="text-gray-400 text-center py-4 text-sm">尚無作答資料</p>';
+        return;
+    }
+
+    const medals = ["🥇","🥈","🥉"];
+    document.getElementById("ranking-list").innerHTML = ranking.map((cls, idx) => {
+        const pct    = cls.pct ?? 0;
+        const barCls = pct >= 80 ? "bg-green-400" : pct >= 50 ? "bg-yellow-400" : "bg-red-400";
+        const tcls   = pct >= 80 ? "text-green-600" : pct >= 50 ? "text-yellow-600" : "text-red-500";
+        const medal  = medals[idx] || `${idx+1}.`;
+        return `<div class="student-row border border-gray-100 rounded-xl px-4 py-3 flex items-center gap-3"
+                     onclick="openRankingClassView('${cls.class}')">
+            <span class="text-xl shrink-0 w-8 text-center">${medal}</span>
+            <div class="flex-1 min-w-0">
+                <div class="flex items-center justify-between mb-1">
+                    <span class="font-bold text-gray-800">${cls.class}</span>
+                    <span class="font-bold ${tcls}">${cls.avgCompleted} / ${completionTopics.length} 分類</span>
+                </div>
+                <div class="rate-bar w-full">
+                    <div class="rate-bar-fill ${barCls}" style="width:${pct}%"></div>
+                </div>
+                <div class="flex justify-between mt-1 text-xs text-gray-400">
+                    <span>${cls.studentCount} 位學生</span>
+                    <span>全部完成 ${cls.allDoneCount} 人</span>
+                </div>
+            </div>
+            <svg class="w-4 h-4 text-gray-300 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+            </svg>
+        </div>`;
+    }).join("");
+}
+
+function openRankingClassView(className) {
+    if (!rankingData) return;
+    const cls = rankingData.ranking.find(r => r.class === className);
+    if (!cls) return;
+
+    document.getElementById("ranking-list").classList.add("hidden");
+    const view = document.getElementById("ranking-student-view");
+    view.classList.remove("hidden");
+    document.getElementById("ranking-class-title").textContent = `${className} — 各學生完成狀況`;
+
+    const { passScore, completionTopics } = rankingData;
+
+    document.getElementById("ranking-student-list").innerHTML = cls.students.map(stu => {
+        const pct    = completionTopics.length > 0
+            ? Math.round((stu.completed / completionTopics.length) * 100) : 0;
+        const tcls   = pct >= 80 ? "text-green-600" : pct >= 50 ? "text-yellow-600" : "text-red-400";
+        const barCls = pct >= 80 ? "bg-green-400" : pct >= 50 ? "bg-yellow-400" : "bg-red-300";
+
+        // 各分類的完成狀況小標籤
+        const topicTags = (stu.details || []).map(d => {
+            const tagCls = d.passed
+                ? "bg-green-100 text-green-700 border-green-200"
+                : "bg-gray-100 text-gray-400 border-gray-200";
+            const score  = d.best !== null ? `${d.best}分` : "未作答";
+            return `<span class="inline-block text-xs px-2 py-0.5 rounded-full border ${tagCls} mr-1 mb-1"
+                title="${d.topic}：${score}">${d.passed ? "✓" : "✗"} ${d.topic.length > 8 ? d.topic.slice(0,8)+"…" : d.topic}</span>`;
+        }).join("");
+
+        return `<div class="border border-gray-100 rounded-xl p-3 bg-gray-50">
+            <div class="flex items-center justify-between mb-2">
+                <span class="font-semibold text-gray-800">${maskName(stu.name)}</span>
+                <span class="font-bold ${tcls}">${stu.completed} / ${completionTopics.length}</span>
+            </div>
+            <div class="rate-bar mb-2">
+                <div class="rate-bar-fill ${barCls}" style="width:${pct}%"></div>
+            </div>
+            <div class="flex flex-wrap">${topicTags}</div>
+        </div>`;
+    }).join("");
+}
+
+function closeRankingStudentView() {
+    document.getElementById("ranking-student-view").classList.add("hidden");
+    document.getElementById("ranking-list").classList.remove("hidden");
+}
+
 function backToTopics() {
     hide("result-section");
+    hide("flashcard-section");
+    hide("flashcard-done-section");
+    hide("flashcard-loading-section");
     show("topic-section");
+    // ★ 回到首頁：只顯示我的完成度，不顯示班級排行
+    if (studentId && completionSettings.completionTopics?.length > 0) {
+        loadMyCompletion(); // 可能剛測完有更新，重新整理
+    }
     window.scrollTo({ top:0, behavior:'smooth' });
 }
 
 // ══════════════════════════════════════════════
 //  7. 管理人登入 Modal
 // ══════════════════════════════════════════════
+
+// ★ 只在登入首頁（login-section 顯示中）才開啟後台入口
+function tryOpenAdminModal() {
+    const loginVisible = !document.getElementById("login-section").classList.contains("hidden");
+    if (!loginVisible) return; // 已進入系統後靜默無反應
+    openAdminModal();
+}
+
+// ══════════════════════════════════════════════
+//  綜合練習 Modal
+// ══════════════════════════════════════════════
+function openComboModal() {
+    const modal = document.getElementById("combo-modal");
+    modal.style.display = "flex";
+
+    // ★ 認知類型快速篩選（點擊後只勾選該類型的分類）
+    const cogTypes = [...new Set(topicsData.map(t => {
+        // 需從 allQuestionsData 找對應認知類型（若已載入）
+        return ""; // 先從分類資料中無法直接取得，建立後更新
+    }).filter(Boolean))];
+
+    // 從 allQuestionsData 收集每個分類對應的認知類型
+    const topicCogMap = {}; // topic → Set of cogTypes
+    allQuestionsData.forEach(q => {
+        if (!topicCogMap[q.top]) topicCogMap[q.top] = new Set();
+        if (q.cogType) topicCogMap[q.top].add(q.cogType);
+    });
+    const allCogTypes = [...new Set(allQuestionsData.map(q => q.cogType).filter(Boolean))].sort();
+
+    const cogFilterEl = document.getElementById("combo-cog-filter");
+    cogFilterEl.innerHTML = allCogTypes.length === 0 ? "" : `
+        <span class="text-xs text-gray-400 self-center">依認知類型快速篩選：</span>
+        ${allCogTypes.map(cog => `
+        <button onclick="comboFilterByCog('${cog}')"
+            class="text-xs px-2.5 py-0.5 rounded-full border border-violet-200 bg-violet-50 text-violet-700 hover:bg-violet-100 transition">
+            ${cog}
+        </button>`).join("")}
+    `;
+
+    // 渲染分類勾選列表（預設全選）
+    const list = document.getElementById("combo-topic-list");
+    list.innerHTML = topicsData.map(({ name, color }) => {
+        const isHex = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(color);
+        const dotStyle = isHex ? `background:${color}` : "";
+        const dotClass = isHex ? "" : getTopicDotClass(color);
+        const cogSet   = topicCogMap[name];
+        const cogTag   = cogSet?.size > 0
+            ? [...cogSet].map(c => `<span class="text-xs text-violet-500">${c}</span>`).join(" · ")
+            : "";
+        return `<label class="flex items-center gap-2 border border-gray-100 rounded-lg px-3 py-2.5 hover:bg-gray-50 cursor-pointer transition">
+            <input type="checkbox" class="combo-topic-cb w-4 h-4 rounded accent-sky-500" value="${name}" checked>
+            <span class="w-2.5 h-2.5 rounded-full shrink-0 ${dotClass}" style="${dotStyle}"></span>
+            <span class="flex-1 min-w-0">
+                <span class="text-sm text-gray-700 block">${name}</span>
+                ${cogTag ? `<span class="text-xs text-violet-500">${cogTag}</span>` : ""}
+            </span>
+        </label>`;
+    }).join("");
+
+    updateComboCount();
+    document.querySelectorAll(".combo-topic-cb").forEach(cb => {
+        cb.addEventListener("change", updateComboCount);
+    });
+}
+
+function getTopicDotClass(color) {
+    const s = String(color || "").toLowerCase();
+    if (s.includes("粉")||s.includes("pink"))   return "bg-pink-400";
+    if (s.includes("藍")||s.includes("blue")||s.includes("sky")) return "bg-blue-400";
+    if (s.includes("綠")||s.includes("green"))  return "bg-green-400";
+    if (s.includes("橘")||s.includes("orange")) return "bg-orange-400";
+    if (s.includes("紫")||s.includes("purple")) return "bg-purple-400";
+    if (s.includes("黃")||s.includes("yellow")) return "bg-yellow-400";
+    return "bg-red-400";
+}
+
+function updateComboCount() {
+    const checked = document.querySelectorAll(".combo-topic-cb:checked").length;
+    document.getElementById("combo-selected-count").textContent =
+        `已選 ${checked} / ${topicsData.length} 個分類`;
+}
+
+// ★ 依認知類型快速勾選對應分類
+function comboFilterByCog(cog) {
+    const topicCogMap = {};
+    allQuestionsData.forEach(q => {
+        if (!topicCogMap[q.top]) topicCogMap[q.top] = new Set();
+        if (q.cogType) topicCogMap[q.top].add(q.cogType);
+    });
+    document.querySelectorAll(".combo-topic-cb").forEach(cb => {
+        const cogSet = topicCogMap[cb.value];
+        cb.checked = cogSet ? cogSet.has(cog) : false;
+    });
+    updateComboCount();
+}
+
+function comboSelectAll(val) {
+    document.querySelectorAll(".combo-topic-cb").forEach(cb => cb.checked = val);
+    updateComboCount();
+}
+
+function closeComboModal() {
+    document.getElementById("combo-modal").style.display = "none";
+}
+
+async function startComboQuiz() {
+    const selectedTopics = [...document.querySelectorAll(".combo-topic-cb:checked")].map(cb => cb.value);
+    const count = parseInt(document.getElementById("combo-count").value) || 30;
+
+    if (selectedTopics.length === 0) {
+        alert("請至少勾選一個分類！");
+        return;
+    }
+
+    closeComboModal();
+    currentSelectedTopic = "綜合練習";
+    isRetryMode = false;
+    attemptCount++;
+
+    hide("topic-section");
+    hide("my-completion-section"); // ★ 進入答題後隱藏完成度
+    document.querySelector("#submitting-section h2").textContent = "正在載入題目...";
+    document.querySelector("#submitting-section p").textContent  = "請稍候";
+    show("submitting-section");
+
+    try {
+        // 逐一載入各選定分類（或一次載入全部再篩選）
+        const res = await postGAS({ action: "getTopicQuestions", topic: "綜合練習", flashcard: false });
+        if (res.status !== "ok") throw new Error(res.message || "載入失敗");
+
+        // 篩選勾選的分類，再洗牌取指定題數
+        const topicSet = new Set(selectedTopics);
+        const filtered = (res.data || []).filter(q => topicSet.has(q.top));
+        const picked   = shuffle([...filtered]).slice(0, count);
+
+        if (!picked.length) {
+            show("topic-section");
+            hide("submitting-section");
+            alert("勾選的分類目前沒有題目！");
+            return;
+        }
+
+        allQuestionsData = picked.map((item, idx) => ({
+            id:      item.id      || `Q_${idx}`,
+            top:     item.top     || "未分類",
+            q:       item.q,
+            options: item.options || [],
+            color:   item.color   || "red",
+            isImage: item.isImage || false,
+            imgUrl:  item.imgUrl  || "",
+            ans:     item.ans     || "",
+            exp:     item.exp     || "",
+        }));
+
+        hide("submitting-section");
+        prepareQuiz(allQuestionsData);
+    } catch(e) {
+        hide("submitting-section");
+        show("topic-section");
+        alert("載入失敗：" + e.message);
+    }
+}
+
 function openAdminModal() {
     document.getElementById("admin-modal").classList.add("open");
     document.getElementById("admin-id").value  = "";
@@ -783,6 +1642,7 @@ async function loadTeacherData() {
 }
 
 let currentClassFilter = "ALL"; // 題目難度分析的分類篩選
+let currentCogFilter   = "ALL"; // 題目難度分析的認知類型篩選
 
 function renderTeacherDashboard(data) {
     const qStats   = data.questionStats       || [];
@@ -1087,7 +1947,26 @@ function renderQuestionStats(list) {
             ${t==="ALL"?"全部分類":t}
         </button>`).join("");
     currentClassFilter = "ALL";
+    currentCogFilter   = "ALL";
+
+    // 認知類型篩選按鈕
+    const cogTypes = ["ALL", ...new Set(list.map(q=>q.cogType).filter(Boolean))].sort();
+    document.getElementById("cog-filter-btns").innerHTML = cogTypes.length <= 1 ? "" : cogTypes.map(t=>`
+        <button onclick="setCogFilter('${t}')"
+            class="cog-filter-btn px-3 py-1 rounded-full text-xs font-semibold border transition
+                   ${t==="ALL"?"bg-violet-500 text-white border-violet-500":"bg-white text-gray-600 border-gray-200 hover:border-violet-300"}"
+            data-cog="${t}">${t==="ALL"?"全部類型":t}</button>`).join("");
+
     renderFilteredQuestions(list);
+}
+
+function setCogFilter(cog) {
+    currentCogFilter = cog;
+    document.querySelectorAll(".cog-filter-btn").forEach(b => {
+        const active = b.dataset.cog === cog;
+        b.className = `cog-filter-btn px-3 py-1 rounded-full text-xs font-semibold border transition ${active?"bg-violet-500 text-white border-violet-500":"bg-white text-gray-600 border-gray-200 hover:border-violet-300"}`;
+    });
+    renderFilteredQuestions(teacherData.questionStats || []);
 }
 
 function setTopicFilter(topic) {
@@ -1103,6 +1982,7 @@ function renderFilteredQuestions(list) {
     const kw       = (document.getElementById("q-search")?.value || "").toLowerCase();
     const filtered = list.filter(q =>
         (currentClassFilter === "ALL" || q.topic === currentClassFilter) &&
+        (currentCogFilter   === "ALL" || q.cogType === currentCogFilter) &&
         (!kw || (q.text||"").toLowerCase().includes(kw))
     );
 
@@ -1162,7 +2042,10 @@ function renderFilteredQuestions(list) {
                                 <span class="difficulty-dot ${dc}"></span>
                             </div>
                             <div class="flex-1 min-w-0">
-                                <p class="font-medium text-gray-800 text-sm leading-snug mb-1">${q.text||q.id}</p>
+                                <div class="flex items-start gap-2 mb-1">
+                                    <p class="font-medium text-gray-800 text-sm leading-snug flex-1">${q.text||q.id}</p>
+                                    ${q.cogType?`<span class="shrink-0 text-xs px-2 py-0.5 rounded-full bg-violet-100 text-violet-700 border border-violet-200 whitespace-nowrap">${q.cogType}</span>`:""}
+                                </div>
                                 <p class="text-xs text-gray-400">作答 ${q.total} 次 ｜ 答對 ${q.correct} 次</p>
                                 <div class="rate-bar mt-2"><div class="rate-bar-fill ${dc}" style="width:${r}%"></div></div>
                             </div>
@@ -1204,11 +2087,77 @@ function renderTopicChart(tStats) {
     }).join("");
 }
 
+// ── 設定 Tab ──────────────────────────────────
+function renderSettingsTab(currentSettings) {
+    // 分數
+    document.getElementById("settings-pass-score").value = currentSettings?.passScore ?? 80;
+
+    // ── 分類勾選 ──
+    const allTopics     = teacherData?.topicStats?.map(t => t.topic) ||
+                          teacherData?.questionStats?.map(q => q.topic).filter((v,i,a)=>a.indexOf(v)===i) ||
+                          [];
+    const checkedTopics = new Set(currentSettings?.completionTopics || []);
+    document.getElementById("settings-topic-list").innerHTML = allTopics.length === 0
+        ? '<p class="text-gray-400 text-sm col-span-2">請先載入分析數據（切換至其他 Tab 後再回來）</p>'
+        : allTopics.map(topic => `
+            <label class="flex items-center gap-2 border border-gray-100 rounded-lg px-3 py-2 hover:bg-gray-50 cursor-pointer">
+                <input type="checkbox" class="settings-topic-cb w-4 h-4 rounded accent-sky-500"
+                    value="${topic}" ${checkedTopics.has(topic) ? "checked" : ""}>
+                <span class="text-sm text-gray-700">${topic}</span>
+            </label>`).join("");
+
+    // ── 班級勾選 ──
+    const checkedClasses = new Set(currentSettings?.completionClasses || []);
+    const classContainer = document.getElementById("settings-class-list");
+    if (classContainer) {
+        classContainer.innerHTML = allClassList.length === 0
+            ? '<p class="text-gray-400 text-sm col-span-2">尚未讀取到班級資料</p>'
+            : allClassList.map(cls => `
+                <label class="flex items-center gap-2 border border-gray-100 rounded-lg px-3 py-2 hover:bg-gray-50 cursor-pointer">
+                    <input type="checkbox" class="settings-class-cb w-4 h-4 rounded accent-purple-500"
+                        value="${cls}" ${checkedClasses.size === 0 || checkedClasses.has(cls) ? "checked" : ""}>
+                    <span class="text-sm text-gray-700">${cls}</span>
+                </label>`).join("");
+    }
+}
+
+function settingsSelectAll(checked) {
+    document.querySelectorAll(".settings-topic-cb").forEach(cb => cb.checked = checked);
+}
+function settingsSelectAllClasses(checked) {
+    document.querySelectorAll(".settings-class-cb").forEach(cb => cb.checked = checked);
+}
+
+async function saveCompletionSettings() {
+    const passScore = parseInt(document.getElementById("settings-pass-score").value) || 80;
+    const topics    = [...document.querySelectorAll(".settings-topic-cb:checked")].map(cb => cb.value);
+    const classes   = [...document.querySelectorAll(".settings-class-cb:checked")].map(cb => cb.value);
+    const btn       = document.getElementById("settings-save-btn");
+    const status    = document.getElementById("settings-save-status");
+
+    btn.disabled = true; btn.textContent = "儲存中...";
+    try {
+        const res = await postGAS({ action: "saveSettings", passScore, completionTopics: topics, completionClasses: classes });
+        if (res.status !== "ok") throw new Error(res.message || "儲存失敗");
+        status.textContent  = "✓ 設定已儲存！學生下次登入時排行榜將更新。";
+        status.className    = "text-sm mt-3 font-medium text-green-600";
+        status.classList.remove("hidden");
+    } catch(e) {
+        status.textContent  = "儲存失敗：" + e.message;
+        status.className    = "text-sm mt-3 font-medium text-red-500";
+        status.classList.remove("hidden");
+    } finally {
+        btn.disabled = false; btn.textContent = "💾 儲存設定";
+    }
+}
+
 function switchTab(tab, event) {
     document.querySelectorAll(".tab-btn").forEach(b=>b.classList.remove("active"));
     document.querySelectorAll(".tab-content").forEach(c=>c.classList.remove("active"));
     event.currentTarget.classList.add("active");
     document.getElementById("tab-"+tab).classList.add("active");
+    // ★ 切到設定Tab時渲染分類勾選
+    if (tab === "settings") renderSettingsTab(completionSettings);
 }
 
 // ══════════════════════════════════════════════
