@@ -817,6 +817,7 @@ function startFullQuiz(topic) { loadAndStartQuiz(topic); } // 相容舊呼叫
 function startRetry() {
     isRetryMode = true;
     attemptCount++;
+    hide("my-completion-section"); // ★ 進入錯題重做後隱藏完成度
     const srcs = quizSession
         .filter(q => !q.isCorrectlyAnswered)
         .map(q => allQuestionsData.find(o => o.id === q.id))
@@ -842,6 +843,7 @@ function prepareQuiz(sources) {
     currentQuestionIndex = 0;
 
     hide("topic-section"); hide("result-section"); hide("submitting-section");
+    hide("my-completion-section"); // ★ 進入題目後隱藏完成度
     show("quiz-section");
     hide("finish-btn-area");
     document.getElementById("quiz-topic-title").textContent = currentSelectedTopic;
@@ -930,10 +932,11 @@ async function submitQuiz() {
     hide("quiz-section");
     show("submitting-section");
 
-    // 整理送出格式
+    // 整理送出格式（附上洗牌後選項，讓 GAS 回傳正確 index）
     const answers = quizSession.map(q => ({
-        questionId:   q.id,
-        selectedText: q.shuffledOpts[q.userSelectedIndex] ?? "未作答",
+        questionId:    q.id,
+        selectedText:  q.shuffledOpts[q.userSelectedIndex] ?? "未作答",
+        shuffledOpts:  q.shuffledOpts,  // ★ 送出洗牌後的選項順序
     }));
 
     try {
@@ -947,7 +950,8 @@ async function submitQuiz() {
             const r = resultMap.get(q.id);
             if (r) {
                 q.isCorrectlyAnswered = r.correct;
-                q.serverCorrectText   = r.correctText || "";
+                q.serverCorrectText   = r.correctText  || "";
+                q.serverCorrectIndex  = r.correctIndex ?? -1; // ★ GAS 回傳的正確 index
                 q.serverExp           = r.exp || "尚無解析";
                 if (r.correct) scoreCorrect++;
             }
@@ -1026,10 +1030,10 @@ function renderReviewList() {
     quizSession.forEach((q, idx) => {
         const isOk = q.isCorrectlyAnswered;
         let optsHtml = '<div class="space-y-2 mb-4 pl-1">';
+        // ★ 直接用 GAS 回傳的 correctIndex，不做文字比對
+        const correctIdx = q.serverCorrectIndex ?? -1;
         q.shuffledOpts.forEach((optText, optIdx) => {
-            const cleanOpt  = optText.replace(/^([1-4]|[A-D])[.\-、\s]*/i,"").trim().toLowerCase();
-            const cleanCorr = (q.serverCorrectText||"").replace(/^([1-4]|[A-D])[.\-、\s]*/i,"").trim().toLowerCase();
-            const isCorrectOpt = cleanOpt === cleanCorr;
+            const isCorrectOpt = optIdx === correctIdx;
             const isUserPick   = optIdx === q.userSelectedIndex;
 
             let textCls = "text-gray-800";
@@ -1145,14 +1149,17 @@ function fcSelectOption(clickedBtn, selectedOpt, q) {
     // 鎖定所有選項
     document.querySelectorAll(".fc-opt-btn").forEach(b => { b.onclick = null; });
 
-    const cleanSel  = selectedOpt.replace(/^([1-4]|[A-D])[.\-、\s]*/i,"").trim().toLowerCase();
-    const cleanCorr = (q.ans||"").replace(/^([1-4]|[A-D])[.\-、\s]*/i,"").trim().toLowerCase();
+    const cleanSel  = selectedOpt.replace(/^([1-4]|[A-D])[.\-、\s]*/i,"").trim().toLowerCase().replace(/\s+/g," ");
+    const cleanCorr = (q.ans||"").replace(/^([1-4]|[A-D])[.\-、\s]*/i,"").trim().toLowerCase().replace(/\s+/g," ");
     const isCorrect = cleanSel === cleanCorr;
 
-    // 標示選項顏色
-    document.querySelectorAll(".fc-opt-btn").forEach(b => {
-        const cleanB = b.dataset.opt.replace(/^([1-4]|[A-D])[.\-、\s]*/i,"").trim().toLowerCase();
-        if (cleanB === cleanCorr) {
+    // ★ 直接找出正確選項的 index，不逐一文字比對
+    const correctIndex = q.shuffledOpts.findIndex(opt =>
+        opt.replace(/^([1-4]|[A-D])[.\-、\s]*/i,"").trim().toLowerCase().replace(/\s+/g," ") === cleanCorr
+    );
+
+    document.querySelectorAll(".fc-opt-btn").forEach((b, i) => {
+        if (i === correctIndex) {
             b.className = "fc-opt-btn w-full text-left border-2 border-green-400 bg-green-50 text-green-700 font-bold rounded-xl px-4 py-3 text-sm";
         } else if (b === clickedBtn && !isCorrect) {
             b.className = "fc-opt-btn w-full text-left border-2 border-red-300 bg-red-50 text-red-600 font-semibold rounded-xl px-4 py-3 text-sm";
@@ -2014,7 +2021,16 @@ function renderFilteredQuestions(list) {
                 const optCounts   = q.optionCounts || {};
                 const correctText = (q.correctText || "").replace(/^([1-4]|[A-D])[.\-、\s]*/i,"").trim().toLowerCase();
                 const optTotal    = q.total || 1;
-                const optEntries  = Object.entries(optCounts).sort((a,b)=>b[1]-a[1]);
+                // ★ 正確答案也做同樣清理，確保比對一致
+                const cleanCorrectText = (correctText || "")
+                    .replace(/^([1-4]|[A-D])[.\-、\s]*/i,"").trim().toLowerCase()
+                    .replace(/\s+/g," "); // 統一多餘空白
+                // ★ 過濾掉「未作答」，並按人次排序
+                const optEntries  = Object.entries(optCounts)
+                    .filter(([opt]) => opt && opt !== "未作答")
+                    .sort((a,b)=>b[1]-a[1]);
+                // ★ 只標記一個正確答案（第一個比對到的）
+                let correctMarked = false;
                 const LABELS      = ["A","B","C","D","E"];
                 const optBarsHtml = optEntries.length > 0 ? `
                     <div class="mt-3 border-t border-gray-100 pt-3">
@@ -2023,8 +2039,10 @@ function renderFilteredQuestions(list) {
                         ${optEntries.map(([opt, cnt], idx) => {
                             const pct      = Math.round((cnt / optTotal) * 100);
                             const label    = LABELS[idx] || (idx+1);
-                            const cleanOpt = opt.replace(/^([1-4]|[A-D])[.\-、\s]*/i,"").trim().toLowerCase();
-                            const isCorrect = correctText && cleanOpt === correctText;
+                            const cleanOpt = opt.replace(/^([1-4]|[A-D])[.\-、\s]*/i,"").trim().toLowerCase().replace(/\s+/g," ");
+                            // ★ 只標記一次正確答案，避免重複標記
+                            const isCorrect = !correctMarked && cleanCorrectText && cleanOpt === cleanCorrectText;
+                            if (isCorrect) correctMarked = true;
                             const rowCls   = isCorrect ? "text-green-700 font-semibold" : "text-gray-600";
                             const badge    = isCorrect ? `<span class="ml-1 text-green-600 text-xs">✓ 正確答案</span>` : "";
                             return `<div class="flex items-start gap-2 text-xs ${rowCls}">
