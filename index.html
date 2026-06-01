@@ -1,4 +1,5 @@
 
+
 <!DOCTYPE html>
 <html lang="zh-Hant">
 <head>
@@ -330,6 +331,114 @@
                 class="w-full bg-sky-500 hover:bg-sky-600 text-white font-bold py-3.5 rounded-xl transition text-base">
                 🚀 開始練習
             </button>
+        </div>
+    </div>
+</div>
+
+<!-- ══════════════════════════════════════════ -->
+<!--       錯題閃卡 Modal                      -->
+<!-- ══════════════════════════════════════════ -->
+<div id="wrong-fc-modal" class="fixed inset-0 bg-black/40 z-50 items-center justify-center p-4" style="display:none;">
+    <div class="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6 max-h-[90vh] flex flex-col">
+        <div class="flex items-center justify-between mb-4 shrink-0">
+            <h2 class="text-lg font-bold text-gray-800">🃏 錯題閃卡</h2>
+            <button onclick="closeWrongFcModal()" class="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
+        </div>
+
+        <!-- 時間範圍 + 題數上限 -->
+        <div class="grid grid-cols-2 gap-3 mb-4 shrink-0">
+            <div>
+                <label class="text-xs font-semibold text-gray-500 mb-1 block">時間範圍</label>
+                <select id="wfc-hours-select"
+                    class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-rose-300 bg-white"
+                    onchange="loadWrongFcCount()">
+                    <option value="1h">最近 1 小時</option>
+                    <option value="3h">最近 3 小時</option>
+                    <option value="6h">最近 6 小時</option>
+                    <option value="12h">最近 12 小時</option>
+                    <option value="24h" selected>最近 24 小時</option>
+                    <option value="72h">最近 3 天</option>
+                    <option value="168h">最近 7 天</option>
+                    <option value="0">全部時間</option>
+                </select>
+            </div>
+            <div>
+                <label class="text-xs font-semibold text-gray-500 mb-1 block">最多題數（0＝不限）</label>
+                <input type="number" id="wfc-max-count" value="100" min="0"
+                    class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-rose-300 text-center font-bold">
+            </div>
+        </div>
+
+        <!-- 分類勾選 -->
+        <div class="mb-4 shrink-0">
+            <div class="flex items-center justify-between mb-2">
+                <label class="text-xs font-semibold text-gray-500">選擇分類</label>
+                <div class="flex gap-2">
+                    <button onclick="wfcSelectAll(true)"  class="text-xs text-rose-600 hover:text-rose-800 underline">全選</button>
+                    <button onclick="wfcSelectAll(false)" class="text-xs text-gray-400 hover:text-gray-600 underline">全不選</button>
+                </div>
+            </div>
+            <div id="wfc-topic-list" class="grid grid-cols-1 sm:grid-cols-2 gap-1.5 max-h-44 overflow-y-auto pr-1"></div>
+        </div>
+
+        <!-- 錯題數量顯示 -->
+        <div id="wfc-count-area" class="shrink-0 bg-rose-50 border border-rose-200 rounded-xl px-4 py-3 mb-4 text-center">
+            <p id="wfc-count-text" class="text-rose-600 text-sm font-semibold">請選擇分類後查詢</p>
+        </div>
+
+        <!-- 開始按鈕 -->
+        <button id="wfc-start-btn" onclick="startWrongFcQuiz()" disabled
+            class="w-full bg-rose-500 hover:bg-rose-600 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold py-3.5 rounded-xl transition shrink-0">
+            開始錯題閃卡
+        </button>
+    </div>
+</div>
+
+<!-- ══════════════════════════════════════════ -->
+<!--       閃卡模式選擇 Modal                  -->
+<!-- ══════════════════════════════════════════ -->
+<div id="fc-mode-modal" class="fixed inset-0 bg-black/40 z-50 items-center justify-center p-4" style="display:none;">
+    <div class="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6">
+        <div class="flex items-center justify-between mb-5">
+            <h2 class="text-lg font-bold text-gray-800">🃏 閃卡複習</h2>
+            <button onclick="closeFcModeModal()" class="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
+        </div>
+        <p id="fc-mode-topic" class="text-sm text-sky-600 font-semibold mb-4 bg-sky-50 px-3 py-1.5 rounded-lg"></p>
+        <div class="space-y-3">
+            <button onclick="startFcMode('all')"
+                class="w-full text-left flex items-center gap-4 border-2 border-gray-100 hover:border-sky-300 hover:bg-sky-50 rounded-xl px-4 py-4 transition">
+                <span class="text-2xl">📚</span>
+                <div>
+                    <p class="font-bold text-gray-800">全部題目</p>
+                    <p class="text-xs text-gray-400 mt-0.5">複習此分類的所有題目</p>
+                </div>
+            </button>
+            <div class="border-2 border-gray-100 rounded-xl overflow-hidden">
+                <button onclick="startFcMode('wrong')" id="fc-wrong-btn"
+                    class="w-full text-left flex items-center gap-4 hover:border-rose-300 hover:bg-rose-50 px-4 py-4 transition">
+                    <span class="text-2xl">❌</span>
+                    <div class="flex-1">
+                        <p class="font-bold text-gray-800">複習錯題</p>
+                        <p class="text-xs text-gray-400 mt-0.5" id="fc-wrong-desc">請選擇時間範圍</p>
+                    </div>
+                </button>
+                <!-- 天數選單 -->
+                <div class="flex items-center gap-2 px-4 pb-3 border-t border-gray-100 pt-2 bg-gray-50">
+                    <span class="text-xs text-gray-500 shrink-0">時間範圍：</span>
+                    <select id="fc-days-select"
+                        class="flex-1 text-sm border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-rose-300 bg-white"
+                        onchange="onFcDaysChange()">
+                        <option value="1h">最近 1 小時</option>
+                        <option value="3h">最近 3 小時</option>
+                        <option value="6h">最近 6 小時</option>
+                        <option value="12h">最近 12 小時</option>
+                        <option value="24h" selected>最近 24 小時</option>
+                        <option value="72h">最近 3 天</option>
+                        <option value="168h">最近 7 天</option>
+                        <option value="0">全部時間</option>
+                    </select>
+                </div>
+            </div>
         </div>
     </div>
 </div>
@@ -710,7 +819,7 @@ function renderTopics() {
             fcBtn.onmouseover = () => { fcBtn.style.background = hexToRgba(c.hex, 0.06); };
             fcBtn.onmouseout  = () => { fcBtn.style.background = ""; };
             fcBtn.innerHTML = "🃏 閃卡複習";
-            fcBtn.onclick   = (e) => { e.stopPropagation(); loadAndStartFlashcard(topic); };
+            fcBtn.onclick   = (e) => { e.stopPropagation(); openFlashcardModal(topic); };
 
             wrapper.appendChild(quizBtn);
             wrapper.appendChild(fcBtn);
@@ -726,7 +835,7 @@ function renderTopics() {
             const fcBtn = document.createElement("button");
             fcBtn.className = `w-full flex items-center justify-center gap-1.5 px-4 py-2 text-xs font-semibold border-t ${c.fcBorder} ${c.fc} ${c.hover} transition`;
             fcBtn.innerHTML = "🃏 閃卡複習";
-            fcBtn.onclick   = (e) => { e.stopPropagation(); loadAndStartFlashcard(topic); };
+            fcBtn.onclick   = (e) => { e.stopPropagation(); openFlashcardModal(topic); };
 
             wrapper.appendChild(quizBtn);
             wrapper.appendChild(fcBtn);
@@ -736,13 +845,29 @@ function renderTopics() {
     });
 
     const allWrapper = document.createElement("div");
-    allWrapper.className = "md:col-span-2 mt-2";
+    allWrapper.className = "md:col-span-2 mt-2 space-y-2";
+
+    // 綜合練習測驗
     const allBtn = document.createElement("button");
     allBtn.className = "w-full text-center bg-blue-50 border-2 border-blue-200 hover:border-blue-400 hover:bg-blue-100 p-4 rounded-xl shadow-sm transition text-blue-700 font-bold text-lg";
     allBtn.innerHTML = "🏆 綜合練習 <span class='text-sm font-normal text-blue-600 block mt-1'>自由選擇分類，隨機出題</span>";
     allBtn.onclick = () => openComboModal();
+
     allWrapper.appendChild(allBtn);
     div.appendChild(allWrapper);
+
+    // ★ 獨立錯題閃卡區塊
+    if (studentId) {
+        const wrongFcWrapper = document.createElement("div");
+        wrongFcWrapper.className = "md:col-span-2 mt-2";
+        const wrongFcBtn = document.createElement("button");
+        wrongFcBtn.className = "w-full text-center bg-rose-50 border-2 border-rose-200 hover:border-rose-400 hover:bg-rose-100 p-4 rounded-xl shadow-sm transition";
+        wrongFcBtn.innerHTML = `<div class="text-rose-700 font-bold text-lg">🃏 錯題閃卡</div>
+            <div class="text-sm text-rose-500 mt-1">依時間範圍複習錯題，可選擇特定分類或全部</div>`;
+        wrongFcBtn.onclick = () => openWrongFcModal();
+        wrongFcWrapper.appendChild(wrongFcBtn);
+        div.appendChild(wrongFcWrapper);
+    }
 }
 
 // ══════════════════════════════════════════════
@@ -1082,6 +1207,7 @@ function startFlashcard(questions, topic) {
     fcDeck  = shuffle(questions.map(q => ({ ...q })));
     fcKnown = [];
     hide("topic-section"); hide("result-section");
+    hide("my-completion-section"); // ★ 進入閃卡後隱藏完成度
     show("flashcard-section");
     document.getElementById("fc-topic-title").textContent = `🃏 ${topic}`;
     renderFlashcard();
@@ -1131,10 +1257,11 @@ function renderFlashcard() {
     }
     document.getElementById("fc-question").textContent = q.q;
 
-    // ★ 選項按鈕（洗牌後渲染）
+    // ★ 選項按鈕（洗牌後渲染），存到 q.shuffledOpts 供 fcSelectOption 使用
     const optContainer = document.getElementById("fc-options");
     optContainer.innerHTML = "";
     const shuffledOpts = shuffle([...q.options]);
+    q.shuffledOpts = shuffledOpts; // ★ 存回 q，供 fcSelectOption 的 findIndex 使用
     shuffledOpts.forEach(opt => {
         const btn = document.createElement("button");
         btn.className = "fc-opt-btn w-full text-left bg-gray-50 border border-gray-200 hover:bg-sky-50 hover:border-sky-300 text-gray-700 font-medium rounded-xl px-4 py-3 transition text-sm";
@@ -1409,6 +1536,194 @@ function backToTopics() {
         loadMyCompletion(); // 可能剛測完有更新，重新整理
     }
     window.scrollTo({ top:0, behavior:'smooth' });
+}
+
+// ══════════════════════════════════════════════
+//  獨立錯題閃卡
+// ══════════════════════════════════════════════
+let wfcQuestions = []; // 載入的錯題資料
+
+function openWrongFcModal() {
+    document.getElementById("wrong-fc-modal").style.display = "flex";
+
+    // 渲染分類列表（預設全選）
+    document.getElementById("wfc-topic-list").innerHTML = topicsData.map(({ name, color }) => {
+        const isHex  = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(color);
+        const dotSty = isHex ? `background:${color}` : "";
+        const dotCls = isHex ? "" : getTopicDotClass(color);
+        return `<label class="flex items-center gap-2 border border-gray-100 rounded-lg px-3 py-2 hover:bg-gray-50 cursor-pointer text-sm">
+            <input type="checkbox" class="wfc-topic-cb w-4 h-4 accent-rose-500" value="${name}" checked
+                onchange="loadWrongFcCount()">
+            <span class="w-2.5 h-2.5 rounded-full shrink-0 ${dotCls}" style="${dotSty}"></span>
+            <span class="text-gray-700 flex-1 truncate">${name}</span>
+        </label>`;
+    }).join("");
+
+    wfcQuestions = [];
+    document.getElementById("wfc-start-btn").disabled = true;
+    loadWrongFcCount();
+}
+
+function closeWrongFcModal() {
+    document.getElementById("wrong-fc-modal").style.display = "none";
+}
+
+function wfcSelectAll(val) {
+    document.querySelectorAll(".wfc-topic-cb").forEach(cb => cb.checked = val);
+    loadWrongFcCount();
+}
+
+async function loadWrongFcCount() {
+    const val     = document.getElementById("wfc-hours-select").value;
+    const hours   = val === "0" ? 0 : parseInt(val);
+    const topics  = [...document.querySelectorAll(".wfc-topic-cb:checked")].map(cb => cb.value);
+    const countEl = document.getElementById("wfc-count-text");
+    const startBtn = document.getElementById("wfc-start-btn");
+
+    if (topics.length === 0) {
+        countEl.textContent = "請至少選擇一個分類";
+        startBtn.disabled = true;
+        wfcQuestions = [];
+        return;
+    }
+
+    countEl.textContent = "查詢中...";
+    startBtn.disabled = true;
+    wfcQuestions = [];
+
+    try {
+        // 逐一查詢各分類錯題後合併
+        const results = await Promise.all(
+            topics.map(topic => postGAS({ action: "getMyWrongQuestions", studentId, topic, hours }))
+        );
+        // 合併去重（以 id 為 key）
+        const qMap = new Map();
+        results.forEach(res => {
+            if (res.status === "ok") {
+                (res.questions || []).forEach(q => { if (!qMap.has(q.id)) qMap.set(q.id, q); });
+            }
+        });
+        let allWrong = shuffle([...qMap.values()]);
+
+        // 題數上限
+        const maxCount = parseInt(document.getElementById("wfc-max-count").value) || 0;
+        if (maxCount > 0 && allWrong.length > maxCount) {
+            allWrong = allWrong.slice(0, maxCount);
+        }
+        wfcQuestions = allWrong;
+
+        const label = val === "0" ? "全部時間" : getFcTimeLabel(val);
+        if (wfcQuestions.length > 0) {
+            const limitNote = maxCount > 0 && qMap.size > maxCount ? `（共 ${qMap.size} 題，已限制為 ${maxCount} 題）` : "";
+            countEl.textContent = `${label}內共 ${wfcQuestions.length} 題錯題 ${limitNote}`;
+            countEl.className   = "text-rose-600 text-sm font-semibold";
+            startBtn.disabled   = false;
+        } else {
+            countEl.textContent = `${label}內無錯題 🎉`;
+            countEl.className   = "text-green-600 text-sm font-semibold";
+            startBtn.disabled   = true;
+        }
+    } catch(e) {
+        countEl.textContent = "查詢失敗，請重試";
+        startBtn.disabled = true;
+    }
+}
+
+function startWrongFcQuiz() {
+    if (!wfcQuestions.length) return;
+    closeWrongFcModal();
+    hide("topic-section");
+    hide("my-completion-section");
+    show("flashcard-loading-section");
+    allQuestionsData = wfcQuestions;
+    hide("flashcard-loading-section");
+    startFlashcard(wfcQuestions, "🃏 錯題閃卡");
+}
+
+// ══════════════════════════════════════════════
+//  閃卡模式選擇
+// ══════════════════════════════════════════════
+let fcModalTopic   = "";
+let fcWrongQuestions = []; // 從 GAS 取得的歷史錯題
+
+function openFlashcardModal(topic) {
+    fcModalTopic = topic;
+    document.getElementById("fc-mode-topic").textContent = topic;
+    document.getElementById("fc-mode-modal").style.display = "flex";
+    fcWrongQuestions = [];
+    // 開啟時自動用預設天數載入
+    onFcDaysChange();
+}
+
+// 天數選單變更時重新載入錯題
+// 時間範圍標籤工具
+function getFcTimeLabel(val) {
+    if (val === "0") return "全部時間";
+    const h = parseInt(val);
+    if (h < 24) return `最近 ${h} 小時`;
+    if (h === 24) return "最近 24 小時";
+    if (h === 72) return "最近 3 天";
+    if (h === 168) return "最近 7 天";
+    return `最近 ${h} 小時`;
+}
+
+function onFcDaysChange() {
+    const val  = document.getElementById("fc-days-select").value;
+    const hours = val === "0" ? 0 : parseInt(val); // 0=全部，其他=小時數
+    const desc = document.getElementById("fc-wrong-desc");
+    const btn  = document.getElementById("fc-wrong-btn");
+    desc.textContent = "載入中...";
+    btn.disabled = true;
+    btn.classList.remove("opacity-50");
+    fcWrongQuestions = [];
+
+    if (!studentId) {
+        desc.textContent = "需要登入才能使用此功能";
+        return;
+    }
+    postGAS({ action: "getMyWrongQuestions", studentId, topic: fcModalTopic, hours })
+        .then(res => {
+            if (res.status === "ok") {
+                fcWrongQuestions = res.questions || [];
+                if (fcWrongQuestions.length > 0) {
+                    const label = getFcTimeLabel(val);
+                    desc.textContent = `${label}內共 ${fcWrongQuestions.length} 題尚未答對`;
+                    btn.disabled = false;
+                } else {
+                    const label = getFcTimeLabel(val);
+                    desc.textContent = `${label}內無錯題 🎉`;
+                    btn.disabled = true;
+                    btn.classList.add("opacity-50");
+                }
+            }
+        }).catch(() => {
+            desc.textContent = "載入失敗，請重試";
+        });
+}
+
+function closeFcModeModal() {
+    document.getElementById("fc-mode-modal").style.display = "none";
+    document.getElementById("fc-wrong-btn").disabled = false;
+    document.getElementById("fc-wrong-btn").classList.remove("opacity-50");
+}
+
+async function startFcMode(mode) {
+    closeFcModeModal();
+
+    if (mode === "all") {
+        // 全部題目：原有邏輯
+        await loadAndStartFlashcard(fcModalTopic);
+    } else {
+        // 錯題複習：直接用已載入的錯題資料
+        if (!fcWrongQuestions.length) return;
+        hide("topic-section");
+        hide("my-completion-section");
+        show("flashcard-loading-section");
+        // 錯題已含 ans/exp，直接使用
+        allQuestionsData = fcWrongQuestions;
+        hide("flashcard-loading-section");
+        startFlashcard(fcWrongQuestions, `${fcModalTopic}（錯題複習）`);
+    }
 }
 
 // ══════════════════════════════════════════════
