@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="zh-Hant">
 <head>
@@ -44,6 +43,15 @@
     </style>
 </head>
 <body class="bg-gray-50 min-h-screen text-gray-800 flex flex-col">
+
+<!-- ★ v1.3 固定頂部倒數計時器 -->
+<div id="deadline-bar" class="hidden fixed top-0 left-0 right-0 z-50 text-center text-sm font-bold py-2 px-4 shadow-md"
+  style="background:#1e1b4b;color:white;">
+  <span id="deadline-icon">⏳</span>
+  <span id="deadline-label">距截止還有</span>
+  <span id="deadline-countdown" class="ml-1 font-mono tracking-wide"></span>
+</div>
+<div id="deadline-spacer" class="hidden" style="height:38px;"></div>
 
 <!-- ══════════════════════════════════════════ -->
 <!--              學生端介面                    -->
@@ -290,7 +298,7 @@
 <!-- ★ 教師後台入口：藏在頁面底部，兩個「©」中間那個才是觸發點 -->
 <footer class="text-center py-4 mt-auto select-none">
     <span class="text-gray-200 text-xs">© 題庫系統</span>
-    <span class="text-gray-200 text-xs ml-2" id="version-badge" title="前端 v1.2 ／ 適配 GAS v9-2">v1.2</span>
+    <span class="text-gray-200 text-xs ml-2" id="version-badge" title="前端 v1.4 ／ 適配 GAS v9-4">v1.4</span>
     <button onclick="tryOpenAdminModal()"
             class="text-gray-200 text-xs ml-px hover:text-gray-300 focus:outline-none cursor-default"
             tabindex="-1" aria-hidden="true">©</button>
@@ -493,6 +501,10 @@
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
                     重新整理
                 </button>
+                <button onclick="updateScoreTable()" id="score-table-btn"
+                    class="bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition flex items-center gap-1">
+                    📊 更新成績總表
+                </button>
                 <button onclick="closeTeacherPortal()"
                     class="bg-gray-200 hover:bg-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm font-medium transition">
                     ✕ 登出
@@ -637,6 +649,167 @@
 // ★ 將此 URL 換成你的 GAS Webapp URL
 const GAS_URL = 'https://script.google.com/macros/s/AKfycby7udVu2rlhQYo1IwBKym8HDAdlgKIc8n4PasSJD_j9RtPsTuDoy0gm1j0xkikPKDPYdw/exec';
 
+// ★ v1.4 Session Token + 即時踢出
+let sessionToken   = "";
+let sessionTimer   = null;
+const SESSION_POLL = 30000; // 每 30 秒驗證一次
+
+// 取得 IP
+async function fetchClientIP() {
+    try {
+        const r = await fetch('https://api.ipify.org?format=json');
+        const d = await r.json();
+        return d.ip || "未知";
+    } catch(e) { return "未知"; }
+}
+
+// 解析裝置資訊
+function getDeviceInfo() {
+    const ua = navigator.userAgent;
+    let device = "未知";
+    if (/iPhone/.test(ua))             device = "iPhone";
+    else if (/iPad/.test(ua))          device = "iPad";
+    else if (/Android.*Mobile/.test(ua)) device = "Android手機";
+    else if (/Android/.test(ua))       device = "Android平板";
+    else if (/Macintosh/.test(ua))     device = "Mac";
+    else if (/Windows/.test(ua))       device = "Windows";
+    else if (/Linux/.test(ua))         device = "Linux";
+    return device;
+}
+
+// 解析瀏覽器資訊
+function getBrowserInfo() {
+    const ua = navigator.userAgent;
+    if (/Edg\//.test(ua))    return "Edge";
+    if (/Chrome\//.test(ua)) return "Chrome";
+    if (/Firefox\//.test(ua))return "Firefox";
+    if (/Safari\//.test(ua)) return "Safari";
+    return "其他";
+}
+
+// 登入時呼叫 GAS 取得 token
+async function loginWithToken(sid, name) {
+    const ip      = await fetchClientIP();
+    const device  = getDeviceInfo();
+    const browser = getBrowserInfo();
+    try {
+        const res = await postGAS({ action: "loginStudent", studentId: sid, name, ip, device, browser });
+        if (res.status === "ok" && res.token) {
+            sessionToken = res.token;
+            startSessionPolling();
+        }
+    } catch(e) { console.warn("loginWithToken 失敗", e); }
+}
+
+// 開始輪詢驗證
+function startSessionPolling() {
+    stopSessionPolling();
+    sessionTimer = setInterval(async () => {
+        if (!sessionToken || !studentId) return;
+        try {
+            const res = await postGAS({ action: "verifySession", studentId, token: sessionToken });
+            if (!res.valid) {
+                stopSessionPolling();
+                handleKickedOut(res.reason);
+            }
+        } catch(e) { /* 網路問題時靜默，不強制登出 */ }
+    }, SESSION_POLL);
+}
+
+// 停止輪詢
+function stopSessionPolling() {
+    if (sessionTimer) { clearInterval(sessionTimer); sessionTimer = null; }
+}
+
+// 被踢出時的處理
+function handleKickedOut(reason) {
+    stopSessionPolling();
+    studentId   = "";
+    studentName = "";
+    sessionToken = "";
+    alert("⚠️ 您的帳號已在其他裝置登入，目前裝置已被登出。\n請重新登入。");
+    location.reload();
+}
+
+// ★ v1.3 倒數計時器
+let deadlineTimer = null;
+
+function initDeadline(deadlineStr) {
+    if (!deadlineStr) return;
+    const deadlineTime = new Date(deadlineStr.replace(/\//g, '-'));
+    if (isNaN(deadlineTime)) return;
+
+    const bar      = document.getElementById("deadline-bar");
+    const spacer   = document.getElementById("deadline-spacer");
+    const icon     = document.getElementById("deadline-icon");
+    const label    = document.getElementById("deadline-label");
+    const countdown = document.getElementById("deadline-countdown");
+
+    bar.classList.remove("hidden");
+    spacer.classList.remove("hidden");
+
+    function update() {
+        const now  = new Date();
+        const diff = deadlineTime - now;
+
+        if (diff <= 0) {
+            // 已截止
+            bar.style.background = "#991b1b";
+            icon.textContent     = "🔒";
+            label.textContent    = "作答時間已結束";
+            countdown.textContent = "";
+            clearInterval(deadlineTimer);
+            return;
+        }
+
+        const days    = Math.floor(diff / (1000*60*60*24));
+        const hours   = Math.floor((diff % (1000*60*60*24)) / (1000*60*60));
+        const minutes = Math.floor((diff % (1000*60*60)) / (1000*60));
+        const seconds = Math.floor((diff % (1000*60)) / 1000);
+
+        // 顏色隨剩餘時間變化
+        if (days === 0 && hours < 2) {
+            bar.style.background = "#991b1b"; // 快截止：紅色
+            icon.textContent = "🔴";
+        } else if (days === 0) {
+            bar.style.background = "#92400e"; // 當天：橘色
+            icon.textContent = "🟠";
+        } else if (days <= 3) {
+            bar.style.background = "#1e3a5f"; // 3天內：深藍
+            icon.textContent = "⏰";
+        } else {
+            bar.style.background = "#1e1b4b"; // 正常：深紫
+            icon.textContent = "⏳";
+        }
+
+        label.textContent = "距截止還有";
+        if (days > 0) {
+            countdown.textContent = `${days} 天 ${String(hours).padStart(2,'0')} 時 ${String(minutes).padStart(2,'0')} 分 ${String(seconds).padStart(2,'0')} 秒`;
+        } else {
+            countdown.textContent = `${String(hours).padStart(2,'0')} 時 ${String(minutes).padStart(2,'0')} 分 ${String(seconds).padStart(2,'0')} 秒`;
+        }
+    }
+
+    update();
+    deadlineTimer = setInterval(update, 1000);
+}
+
+// ★ v1.3 更新成績總表
+async function updateScoreTable() {
+    const btn = document.getElementById("score-table-btn");
+    const origText = btn.innerHTML;
+    btn.innerHTML = "⏳ 更新中...";
+    btn.disabled = true;
+    try {
+        const res = await postGAS({ action: "getStudentScoreTable" });
+        btn.innerHTML = "✅ " + (res.message || "更新完成");
+        setTimeout(() => { btn.innerHTML = origText; btn.disabled = false; }, 3000);
+    } catch(e) {
+        btn.innerHTML = "❌ 失敗";
+        setTimeout(() => { btn.innerHTML = origText; btn.disabled = false; }, 3000);
+    }
+}
+
 // ── 系統狀態 ──
 let allQuestionsData   = [];
 let topicsData         = [];   // ★ 分類清單（doGet 回傳）
@@ -708,6 +881,9 @@ async function fetchQuestionBank() {
         completionSettings = result.completionSettings || { passScore: 80, completionTopics: [], completionClasses: [] };
         allClassList       = result.allClassList || [];
 
+        // ★ v1.3 初始化倒數計時器
+        if (result.deadline) initDeadline(result.deadline);
+
         hide("loading-section");
         show("login-section");
         document.getElementById("input-id").focus();
@@ -749,6 +925,8 @@ function handleLogin() {
     studentId   = idVal;
     studentName = nameVal;
     document.getElementById("display-user-name").textContent = studentName;
+    // ★ v1.4 取得 token（非同步，不阻塞登入流程）
+    loginWithToken(studentId, studentName);
     hide("login-section");
     renderTopics();
     show("topic-section");
@@ -1484,15 +1662,13 @@ async function openRankingClassView(className) {
     let cls = rankingData.ranking.find(r => r.class === className);
     if (!cls) return;
 
-    // ★ 若快取版本沒有學生資料（students為null/undefined），重新查詢完整資料
+    // ★ v1.4 若快取版本沒有學生資料，改用 getClassStudents 取得
     if (!cls.students) {
         try {
-            const res = await postGAS({ action: "getCompletionRanking" });
-            if (res.status === "ok") {
-                rankingData = res; // 更新為完整資料
-                cls = rankingData.ranking.find(r => r.class === className);
-                if (!cls) return;
-            }
+            const res = await postGAS({ action: "getClassStudents", className });
+            if (res.status === "ok" && res.students) {
+                cls = Object.assign({}, cls, { students: res.students });
+            } else return;
         } catch(e) { return; }
     }
 
@@ -1503,33 +1679,101 @@ async function openRankingClassView(className) {
 
     const { passScore, completionTopics } = rankingData;
 
-    document.getElementById("ranking-student-list").innerHTML = cls.students.map(stu => {
-        const pct    = completionTopics.length > 0
-            ? Math.round((stu.completed / completionTopics.length) * 100) : 0;
-        const tcls   = pct >= 80 ? "text-green-600" : pct >= 50 ? "text-yellow-600" : "text-red-400";
-        const barCls = pct >= 80 ? "bg-green-400" : pct >= 50 ? "bg-yellow-400" : "bg-red-300";
+    // ── 方案 A：橫向熱圖表格 ──
+    const topics = completionTopics || [];
+    const students = cls.students || [];
 
-        // 各分類的完成狀況小標籤
-        const topicTags = (stu.details || []).map(d => {
-            const tagCls = d.passed
-                ? "bg-green-100 text-green-700 border-green-200"
-                : "bg-gray-100 text-gray-400 border-gray-200";
-            const score  = d.best !== null ? `${d.best}分` : "未作答";
-            return `<span class="inline-block text-xs px-2 py-0.5 rounded-full border ${tagCls} mr-1 mb-1"
-                title="${d.topic}：${score}">${d.passed ? "✓" : "✗"} ${d.topic.length > 8 ? d.topic.slice(0,8)+"…" : d.topic}</span>`;
+    // 色彩函式
+    function scoreColor(score, passed) {
+        if (score === null || score === undefined) return { bg:"#f8fafc", text:"#94a3b8", val:"—" };
+        if (score >= passScore) return { bg:"#dcfce7", text:"#166534", val:score };
+        if (score >= 60)        return { bg:"#fef9c3", text:"#854d0e", val:score };
+        return                         { bg:"#fee2e2", text:"#991b1b", val:score };
+    }
+
+    // 標題列（分類名稱，超過8字截斷）
+    const thCols = topics.map(t => {
+        const short = t.length > 10 ? t.slice(0,10)+"…" : t;
+        return `<th style="padding:7px 6px;font-size:11px;font-weight:600;color:#64748b;
+            border-bottom:1px solid #e2e8f0;min-width:68px;max-width:80px;
+            text-align:center;word-break:break-all;line-height:1.3;"
+            title="${t}">${short}</th>`;
+    }).join("");
+
+    // 資料列
+    const rows = students.map(stu => {
+        const detailMap = {};
+        (stu.details || []).forEach(d => { detailMap[d.topic] = d; });
+
+        const completed = topics.filter(t => detailMap[t]?.passed).length;
+        const compColor = completed === topics.length ? "#166534"
+            : completed >= topics.length * 0.6 ? "#854d0e" : "#991b1b";
+        const compBg = completed === topics.length ? "#dcfce7"
+            : completed >= topics.length * 0.6 ? "#fef9c3" : "#fee2e2";
+
+        const cells = topics.map(t => {
+            const d = detailMap[t];
+            const c = scoreColor(d?.best ?? null, d?.passed);
+            return `<td style="text-align:center;padding:6px 4px;
+                background:${c.bg};border-bottom:1px solid #e2e8f0;
+                border-right:1px solid #f1f5f9;">
+                <span style="font-size:13px;font-weight:600;color:${c.text};">${c.val}</span>
+            </td>`;
         }).join("");
 
-        return `<div class="border border-gray-100 rounded-xl p-3 bg-gray-50">
-            <div class="flex items-center justify-between mb-2">
-                <span class="font-semibold text-gray-800">${maskName(stu.name)}</span>
-                <span class="font-bold ${tcls}">${stu.completed} / ${completionTopics.length}</span>
-            </div>
-            <div class="rate-bar mb-2">
-                <div class="rate-bar-fill ${barCls}" style="width:${pct}%"></div>
-            </div>
-            <div class="flex flex-wrap">${topicTags}</div>
-        </div>`;
+        return `<tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;
+                white-space:nowrap;min-width:110px;background:#fff;">
+                <div style="font-size:13px;font-weight:600;color:#1e293b;">${maskName(stu.name)}</div>
+                <div style="font-size:11px;color:#94a3b8;">${stu.sid || ""}</div>
+            </td>
+            ${cells}
+            <td style="text-align:center;padding:6px 10px;
+                border-bottom:1px solid #e2e8f0;background:#fff;white-space:nowrap;">
+                <span style="font-size:12px;font-weight:700;
+                    padding:2px 8px;border-radius:99px;
+                    background:${compBg};color:${compColor};">
+                    ${completed}/${topics.length}
+                </span>
+            </td>
+        </tr>`;
     }).join("");
+
+    // 圖例
+    const legend = `<div style="padding:8px 12px;background:#f8fafc;border-top:1px solid #e2e8f0;
+        display:flex;gap:16px;font-size:11px;color:#64748b;flex-wrap:wrap;">
+        <span><span style="display:inline-block;width:10px;height:10px;background:#dcfce7;
+            border-radius:2px;margin-right:4px;vertical-align:-1px;"></span>≥${passScore} 達標</span>
+        <span><span style="display:inline-block;width:10px;height:10px;background:#fef9c3;
+            border-radius:2px;margin-right:4px;vertical-align:-1px;"></span>60–${passScore-1}</span>
+        <span><span style="display:inline-block;width:10px;height:10px;background:#fee2e2;
+            border-radius:2px;margin-right:4px;vertical-align:-1px;"></span>&lt;60</span>
+        <span><span style="display:inline-block;width:10px;height:10px;background:#f8fafc;
+            border:1px solid #e2e8f0;border-radius:2px;margin-right:4px;vertical-align:-1px;"></span>未作答</span>
+    </div>`;
+
+    document.getElementById("ranking-student-list").innerHTML = `
+        <div style="overflow-x:auto;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;">
+            <table style="width:100%;border-collapse:collapse;font-size:13px;">
+                <thead>
+                    <tr style="background:#f8fafc;">
+                        <th style="text-align:left;padding:8px 12px;font-size:11px;font-weight:600;
+                            color:#64748b;border-bottom:1px solid #e2e8f0;min-width:110px;">
+                            學生
+                        </th>
+                        ${thCols}
+                        <th style="padding:7px 10px;font-size:11px;font-weight:600;
+                            color:#64748b;border-bottom:1px solid #e2e8f0;
+                            text-align:center;white-space:nowrap;">
+                            完成度
+                        </th>
+                    </tr>
+                </thead>
+                <tbody>${rows}</tbody>
+            </table>
+            ${legend}
+        </div>
+    `;
 }
 
 function closeRankingStudentView() {
