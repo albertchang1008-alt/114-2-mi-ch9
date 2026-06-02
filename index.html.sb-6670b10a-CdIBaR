@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="zh-Hant">
 <head>
@@ -635,7 +634,7 @@
 <!-- ══════════════════════════════════════════ -->
 <script>
 // ★ 將此 URL 換成你的 GAS Webapp URL
-const GAS_URL = 'https://script.google.com/macros/s/AKfycby7udVu2rlhQYo1IwBKym8HDAdlgKIc8n4PasSJD_j9RtPsTuDoy0gm1j0xkikPKDPYdw/exec';
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbyVAPaCD2RQ8KosHwObW00L7m-foWVdxwonDn0ftL6cukWsq_Mkz2VVskRQ8-gRMftp/exec';
 
 // ── 系統狀態 ──
 let allQuestionsData   = [];
