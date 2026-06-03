@@ -275,7 +275,17 @@
             </div>
             <p id="result-message" class="text-xl font-medium text-pink-600 mb-8"></p>
             <p id="save-status" class="text-sm text-blue-600 mb-4 font-medium"></p>
-            <div class="flex flex-col gap-3 justify-center mt-8 max-w-sm mx-auto">
+            <!-- ★ 閃卡複習提示橫幅（低分時顯示）-->
+            <div id="fc-hint-banner" class="hidden max-w-sm mx-auto mt-4 rounded-xl px-4 py-3 border-2 border-purple-200 bg-purple-50 text-left">
+                <p class="text-sm font-bold text-purple-700 mb-1">🃏 閃卡是你的秘笈！</p>
+                <p class="text-xs text-purple-600 mb-3">搭配解析複習錯題，比反覆測驗更有效率。</p>
+                <button onclick="openFlashcardModal(currentSelectedTopic)"
+                    class="w-full bg-purple-500 hover:bg-purple-600 text-white font-bold py-2.5 rounded-lg text-sm transition">
+                    🃏 立即開啟閃卡複習
+                </button>
+            </div>
+
+            <div class="flex flex-col gap-3 justify-center mt-4 max-w-sm mx-auto">
                 <div class="flex flex-col sm:flex-row gap-3">
                     <button id="btn-retry" onclick="startRetry()" class="hidden flex-1 bg-rose-500 hover:bg-rose-600 text-white font-bold py-3.5 px-6 rounded-xl transition shadow-md shadow-rose-200">錯題重做</button>
                     <button onclick="startFullQuiz(currentSelectedTopic)" class="flex-1 bg-sky-500 hover:bg-sky-600 text-white font-bold py-3.5 px-6 rounded-xl transition shadow-md shadow-sky-200">重新完整測驗</button>
@@ -298,7 +308,7 @@
 <!-- ★ 教師後台入口：藏在頁面底部，兩個「©」中間那個才是觸發點 -->
 <footer class="text-center py-4 mt-auto select-none">
     <span class="text-gray-200 text-xs">© 題庫系統</span>
-    <span class="text-gray-200 text-xs ml-2" id="version-badge" title="前端 v1.4 ／ 適配 GAS v9-4">v1.4</span>
+    <span class="text-gray-200 text-xs ml-2" id="version-badge" title="前端 v1.6 ／ 適配 GAS v9-6">v1.6</span>
     <button onclick="tryOpenAdminModal()"
             class="text-gray-200 text-xs ml-px hover:text-gray-300 focus:outline-none cursor-default"
             tabindex="-1" aria-hidden="true">©</button>
@@ -818,6 +828,8 @@ let completionSettings = { passScore: 80, completionTopics: [], completionClasse
 let allClassList       = [];   // ★ 所有班級清單（後台設定用）
 let studentName        = "";
 let studentId          = "";
+let isLoggedIn         = false;  // ★ v1.5 登入狀態旗標
+let quizStartTime      = 0;       // ★ v1.6 測驗開始時間
 let currentSelectedTopic = "";
 let quizSession        = [];   // 當前測驗題目（含學生作答）
 let currentQuestionIndex = 0;
@@ -922,16 +934,16 @@ function handleLogin() {
 
     // 驗證通過，直接進入
     errEl.classList.add("hidden");
+    isLoggedIn  = true;  // ★ 設定登入狀態
     studentId   = idVal;
     studentName = nameVal;
     document.getElementById("display-user-name").textContent = studentName;
     // ★ v1.4 取得 token（非同步，不阻塞登入流程）
     loginWithToken(studentId, studentName);
     hide("login-section");
-    renderTopics();
-    show("topic-section");
-    // ★ 登入後隱藏班級排行，只顯示個人完成度
     hide("ranking-section");
+    try { renderTopics(); } catch(e) { console.warn("renderTopics 錯誤", e); }
+    show("topic-section");
     if (completionSettings.completionTopics?.length > 0) {
         loadMyCompletion();
     }
@@ -942,7 +954,23 @@ function handleLogin() {
 // ══════════════════════════════════════════════
 function renderTopics() {
     const div = document.getElementById("topic-list");
+    if (!div) { console.error("❌ topic-list 元素不存在"); return; }
     div.innerHTML = "";
+
+    console.log("📚 renderTopics 呼叫，topicsData 長度：", topicsData?.length,
+                "，completionTopics 長度：", completionSettings?.completionTopics?.length);
+
+    // ★ v1.5 fallback：topicsData 空時用 completionTopics 補入（顯示但無顏色）
+    if (!topicsData || topicsData.length === 0) {
+        const fallbackTopics = completionSettings?.completionTopics || [];
+        console.warn("⚠️ topicsData 空，使用 fallback，分類數：", fallbackTopics.length);
+        if (fallbackTopics.length > 0) {
+            topicsData = fallbackTopics.map(name => ({ name, color: "#0ea5e9" }));
+        } else {
+            div.innerHTML = '<p class="text-gray-400 text-center py-8 text-sm">📭 尚無分類資料，請重新整理頁面</p>';
+            return;
+        }
+    }
 
     // 色彩工具
     const hexToRgba = (hex, alpha) => {
@@ -965,20 +993,21 @@ function renderTopics() {
         return "#ef4444";
     };
 
-    // 取得各分類完成度資訊
+    // 取得各分類完成度資訊（含平均每題用時）
     const compMap = {};
     if (window._completionDetails) {
         window._completionDetails.forEach(d => {
-            compMap[d.topic] = { best: d.best, passed: d.passed };
+            compMap[d.topic] = { best: d.best, passed: d.passed, avgSec: d.avgSec || null };
         });
     }
 
     // 分類列表（列式，每列含測驗+閃卡+最高分）
-    topicsData.forEach(({ name: topic, color }) => {
+    console.log("📋 開始渲染", topicsData.length, "個分類");
+    topicsData.forEach(({ name: topic, color }, idx) => {
+        try {
         const hex   = getColor(color);
         const comp  = compMap[topic];
         const row   = document.createElement("div");
-        row.style.cssText = `border:1.5px solid ${hexToRgba(hex, 0.3)};border-radius:12px;overflow:hidden;background:white;`;
 
         // 分數標籤 HTML
         let scoreBadge = "";
@@ -993,10 +1022,26 @@ function renderTopics() {
                 scoreBadge = `<span style="color:#94a3b8;font-size:11px;">未作答</span>`;
             }
         }
+        // ★ v1.6 平均每題用時標籤
+        const avgSec = comp?.avgSec;
+        const timeLabel = avgSec != null
+            ? `<span style="font-size:10px;color:#64748b;margin-left:4px;">⏱ 均${avgSec}秒/題</span>`
+            : "";
+
+        // ★ 方案 C：未達標加閃卡提示文字（needsReview 必須在 borderColor 之前定義）
+        const needsReview = comp && !comp.passed && comp.best !== null;
+        const fcHint = needsReview
+            ? `<div style="font-size:10px;color:#dc2626;margin-top:3px;font-weight:600;">💡 建議閃卡複習</div>`
+            : "";
+        const borderColor = needsReview ? "rgba(239,68,68,0.35)" : hexToRgba(hex, 0.3);
+        row.style.cssText = `border:1.5px solid ${borderColor};border-radius:12px;overflow:hidden;background:white;`;
 
         row.innerHTML = `
             <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;gap:8px;">
-                <div style="font-size:14px;font-weight:600;color:#1e293b;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${topic}</div>
+                <div style="flex:1;min-width:0;overflow:hidden;">
+                    <div style="font-size:14px;font-weight:600;color:#1e293b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${topic}${timeLabel}</div>
+                    ${fcHint}
+                </div>
                 <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
                     ${scoreBadge}
                     <button class="quiz-btn" data-topic="${topic}"
@@ -1013,7 +1058,11 @@ function renderTopics() {
         row.querySelector(".quiz-btn").onclick = () => loadAndStartQuiz(topic);
         row.querySelector(".fc-btn").onclick   = (e) => { e.stopPropagation(); openFlashcardModal(topic); };
         div.appendChild(row);
+        } catch(err) {
+            console.error("❌ 分類 " + idx + " (" + topic + ") 渲染失敗：", err);
+        }
     });
+    console.log("✅ renderTopics 完成，渲染了", div.children.length, "個元素");
 
     // 底部：綜合練習 + 錯題閃卡
     const bottomWrap = document.createElement("div");
@@ -1043,8 +1092,9 @@ function renderTopics() {
 // ★ 按需載入指定分類題目，再開始測驗
 async function loadAndStartQuiz(topic) {
     currentSelectedTopic = topic;
-    isRetryMode = false;
+    isRetryMode   = false;
     attemptCount++;
+    quizStartTime = Date.now(); // ★ v1.6 記錄測驗開始時間
     hide("topic-section");
     // 完成度已整合進 topic-section，進入答題時 topic-section 本身就隱藏
     // 顯示載入中（借用 submitting-section）
@@ -1283,6 +1333,14 @@ function showResults(scoreCorrect) {
     const retryBtn = document.getElementById("btn-retry");
     wrong > 0 ? retryBtn.classList.remove("hidden") : retryBtn.classList.add("hidden");
 
+    // ★ 方案 A：低於達標分數時顯示閃卡提示橫幅
+    const hintBanner = document.getElementById("fc-hint-banner");
+    const passScore  = completionSettings?.passScore || 80;
+    if (hintBanner) {
+        if (scoreCalc < passScore && wrong > 0) hintBanner.classList.remove("hidden");
+        else hintBanner.classList.add("hidden");
+    }
+
     renderReviewList();
 
     // 非同步送出成績與明細（不影響顯示速度）
@@ -1301,7 +1359,8 @@ function showResults(scoreCorrect) {
     Promise.all([
         postGAS({ action:"submitScore", studentId, name:studentName,
             topic:currentSelectedTopic, mode:isRetryMode?"錯題重做":"完整測驗",
-            attempt:attemptCount, score:scoreCalc, correctCount:scoreCorrect, wrongCount:wrong }),
+            attempt:attemptCount, score:scoreCalc, correctCount:scoreCorrect, wrongCount:wrong,
+            duration: quizStartTime > 0 ? Math.round((Date.now() - quizStartTime) / 1000) : 0 }),
         postGAS({ action:"submitAnswerDetail", studentId, name:studentName,
             mode:isRetryMode?"錯題重做":"完整測驗", attempt:attemptCount, details }),
     ]).then(() => {
@@ -1560,7 +1619,7 @@ function renderMyCompletion(data) {
     const pct    = total > 0 ? Math.round((passed / total) * 100) : 0;
     const barColor = pct >= 80 ? "#22c55e" : pct >= 50 ? "#0ea5e9" : "#f43f5e";
 
-    // ★ 存到全域供 renderTopics 讀取（顯示各分類最高分）
+    // ★ 存到全域供 renderTopics 讀取（顯示各分類最高分 + 平均每題用時）
     window._completionDetails = details;
 
     // 顯示摘要（整合進 topic-section 頂部）
@@ -1581,7 +1640,7 @@ function renderMyCompletion(data) {
     }
 
     // 重新渲染分類列表（帶入完成度資訊）
-    renderTopics();
+    try { renderTopics(); } catch(e) { console.error("❌ renderMyCompletion → renderTopics 失敗：", e); }
 }
 
 async function loadCompletionRanking() {
@@ -1589,10 +1648,14 @@ async function loadCompletionRanking() {
         const res = await postGAS({ action: "getCompletionRanking" });
         if (res.status !== "ok") return;
         rankingData = res;
+        // ★ v1.5：已登入則不顯示排行（避免競態條件蓋掉 topic-section）
+        if (isLoggedIn) return;
         renderRankingSection(res);
         show("ranking-section");
+        show("login-section");
     } catch(e) {
         console.warn("排行載入失敗", e);
+        if (!isLoggedIn) show("login-section");
     }
 }
 
@@ -1776,10 +1839,9 @@ async function openRankingClassView(className) {
     appEl.className = appEl.className.replace("max-w-3xl", "max-w-7xl");
 
     const passScore = rankingData.passScore;
-    // ★ 分類順序依完成度設定，不依題庫順序
-    const topics = completionSettings?.completionTopics?.length
-        ? completionSettings.completionTopics
-        : (rankingData.completionTopics || []);
+    // ★ 分類順序依題庫順序（topicsData），篩選出完成度設定中的分類
+    const compTopicSet = new Set(rankingData.completionTopics || []);
+    const topics = topicsData.map(t => t.name).filter(n => compTopicSet.has(n));
 
     // 整理學生資料格式
     const students = (cls.students || []).map(stu => {
@@ -2380,10 +2442,12 @@ function openClassView(className) {
     const activeTopic = currentClassTopicFilter;
     const passScore  = completionSettings?.passScore || 80;
 
-    // ★ 只顯示完成度設定中的分類
+    // ★ 分類順序依題庫順序（topicsData），篩選出完成度設定中的分類
     const allCompTopics = completionSettings?.completionTopics || [];
+    const compSet = new Set(allCompTopics);
+    const sortedCompTopics = topicsData.map(t => t.name).filter(n => compSet.has(n));
     const topics = activeTopic === "ALL"
-        ? allCompTopics
+        ? sortedCompTopics
         : (allCompTopics.includes(activeTopic) ? [activeTopic] : [activeTopic]);
 
     const titleSuffix = activeTopic === "ALL" ? "全部單元" : activeTopic;
@@ -2670,11 +2734,18 @@ function renderTopicChart(tStats) {
         data:{labels:sorted.map(t=>t.topic),datasets:[{label:"答對率(%)",data:sorted.map(t=>t.rate??0),backgroundColor:colors,borderRadius:6}]},
         options:{responsive:true,plugins:{legend:{display:false}},scales:{y:{min:0,max:100,ticks:{stepSize:20},grid:{color:"#f0f0f0"}}}}
     });
+    // ★ v1.6 平均每題用時對照
+    const timeMap = {};
+    (teacherData.topicTimeList || []).forEach(t => { timeMap[t.topic] = t; });
+
     document.getElementById("topic-stats-list").innerHTML = sorted.map(t=>{
         const r=t.rate??0; const c=r<60?"bg-red-400":r<80?"bg-yellow-400":"bg-green-400"; const tc=r<60?"text-red-500":r<80?"text-yellow-500":"text-green-500";
+        const tt = timeMap[t.topic];
+        const timeStr = tt ? `<span class="text-xs font-semibold px-2 py-0.5 rounded-full" style="background:#f0f9ff;color:#0369a1;">⏱ ${tt.avgSec}秒/題</span>` : "";
         return `<div class="flex items-center gap-4 p-3 border border-gray-100 rounded-xl">
             <span class="font-medium text-gray-800 flex-1">${t.topic}</span>
             <span class="text-sm text-gray-400">作答 ${t.total} 次</span>
+            ${timeStr}
             <div class="w-32 rate-bar"><div class="rate-bar-fill ${c}" style="width:${r}%"></div></div>
             <span class="font-bold w-12 text-right ${tc}">${r}%</span>
         </div>`;
@@ -2686,10 +2757,13 @@ function renderSettingsTab(currentSettings) {
     // 分數
     document.getElementById("settings-pass-score").value = currentSettings?.passScore ?? 80;
 
-    // ── 分類勾選 ──
-    const allTopics     = teacherData?.topicStats?.map(t => t.topic) ||
-                          teacherData?.questionStats?.map(q => q.topic).filter((v,i,a)=>a.indexOf(v)===i) ||
-                          [];
+    // ── 分類勾選：依題庫順序（topicsData）──
+    // 先取題庫順序，再補入有作答但不在題庫的分類
+    const topicsFromDB  = topicsData.map(t => t.name);
+    const topicsFromStats = (teacherData?.topicStats?.map(t => t.topic) ||
+                             teacherData?.questionStats?.map(q => q.topic).filter((v,i,a)=>a.indexOf(v)===i) ||
+                             []).filter(t => !topicsFromDB.includes(t));
+    const allTopics = [...topicsFromDB, ...topicsFromStats];
     const checkedTopics = new Set(currentSettings?.completionTopics || []);
     document.getElementById("settings-topic-list").innerHTML = allTopics.length === 0
         ? '<p class="text-gray-400 text-sm col-span-2">請先載入分析數據（切換至其他 Tab 後再回來）</p>'
